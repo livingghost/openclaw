@@ -661,10 +661,12 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
       const botUser = await client.fetchUser("@me");
       botUserId = botUser?.id;
       botUserName = botUser?.username?.trim() || botUser?.globalName?.trim() || undefined;
-      rememberDiscordManagedBotIdentity({
-        botUserId,
-        accountId: account.accountId,
-      });
+      if (botUserId) {
+        rememberDiscordManagedBotIdentity({
+          botUserId,
+          accountId: account.accountId,
+        });
+      }
     } catch (err) {
       runtime.error?.(danger(`discord: failed to fetch bot identity: ${String(err)}`));
     }
