@@ -402,8 +402,10 @@ function createMessageSentEmitter(params: {
 }
 
 function resolveOutboundHookMetadata(params: {
+  channel: Exclude<OutboundChannel, "none">;
   to: string;
   conversationId?: string;
+  replyToId?: string | null;
   threadId?: string | number | null;
   session?: OutboundSessionContext;
   mirror?: DeliverOutboundPayloadsCoreParams["mirror"];
@@ -413,9 +415,12 @@ function resolveOutboundHookMetadata(params: {
   sessionKey?: string;
   agentId?: string;
 } {
+  const resolvedThreadId =
+    params.threadId ??
+    (params.channel === "slack" && params.replyToId ? params.replyToId : undefined);
   return {
     conversationId: params.conversationId ?? params.to,
-    threadId: params.threadId ?? undefined,
+    threadId: resolvedThreadId,
     sessionKey: params.mirror?.sessionKey ?? params.session?.key,
     agentId: params.mirror?.agentId ?? params.session?.agentId,
   };
@@ -712,8 +717,10 @@ async function deliverOutboundPayloadsCore(
   );
   const hookRunner = getGlobalHookRunner();
   const hookMetadata = resolveOutboundHookMetadata({
+    channel,
     to,
     conversationId: to,
+    replyToId: params.replyToId,
     threadId: params.threadId,
     session: params.session,
     mirror: params.mirror,

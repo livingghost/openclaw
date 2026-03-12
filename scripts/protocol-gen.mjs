@@ -1,13 +1,15 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ProtocolSchemas } from "../src/gateway/protocol/schema.js";
+import jitiFactory from "jiti";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
+const jiti = jitiFactory(import.meta.url);
+const { ProtocolSchemas } = jiti("../src/gateway/protocol/schema.ts");
 
 async function writeJsonSchema() {
-  const definitions: Record<string, unknown> = {};
+  const definitions = {};
   for (const [name, schema] of Object.entries(ProtocolSchemas)) {
     definitions[name] = schema;
   }
@@ -38,14 +40,9 @@ async function writeJsonSchema() {
   const jsonSchemaPath = path.join(distDir, "protocol.schema.json");
   await fs.writeFile(jsonSchemaPath, JSON.stringify(rootSchema, null, 2));
   console.log(`wrote ${jsonSchemaPath}`);
-  return { jsonSchemaPath, schemaString: JSON.stringify(rootSchema) };
 }
 
-async function main() {
-  await writeJsonSchema();
-}
-
-main().catch((err) => {
+writeJsonSchema().catch((err) => {
   console.error(err);
   process.exit(1);
 });

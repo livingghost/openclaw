@@ -934,6 +934,56 @@ describe("deliverOutboundPayloads", () => {
     );
   });
 
+  it("uses replyToId as hook threadId for Slack threaded sends", async () => {
+    hookMocks.runner.hasHooks.mockImplementation(
+      (name: string) => name === "message_sending" || name === "message_sent",
+    );
+    const sendText = vi.fn().mockResolvedValue({ channel: "slack", messageId: "slack-1" });
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "slack",
+          source: "test",
+          plugin: createOutboundTestPlugin({
+            id: "slack",
+            outbound: { deliveryMode: "direct", sendText },
+          }),
+        },
+      ]),
+    );
+
+    await deliverOutboundPayloads({
+      cfg: {},
+      channel: "slack",
+      to: "C123",
+      payloads: [{ text: "hello" }],
+      replyToId: "1741719181.247349",
+      threadId: null,
+      session: { key: "agent:sender:session", agentId: "sender-agent" },
+    });
+
+    expect(hookMocks.runner.runMessageSending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          threadId: "1741719181.247349",
+          sessionKey: "agent:sender:session",
+          agentId: "sender-agent",
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(hookMocks.runner.runMessageSent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          threadId: "1741719181.247349",
+          sessionKey: "agent:sender:session",
+          agentId: "sender-agent",
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("falls back to mirror metadata for message_sending when session is absent", async () => {
     hookMocks.runner.hasHooks.mockImplementation((name: string) => name === "message_sending");
     const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
