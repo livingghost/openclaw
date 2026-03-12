@@ -760,17 +760,17 @@ async function deliverOutboundPayloadsCore(
   }
   for (const payload of normalizedPayloads) {
     let payloadSummary = buildPayloadSummary(payload);
+    let payloadHookMetadata = resolveOutboundHookMetadata({
+      channel,
+      to,
+      conversationId: to,
+      replyToId: payload.replyToId ?? params.replyToId,
+      threadId: params.threadId,
+      session: params.session,
+      mirror: params.mirror,
+    });
     try {
       throwIfAborted(abortSignal);
-      const initialHookMetadata = resolveOutboundHookMetadata({
-        channel,
-        to,
-        conversationId: to,
-        replyToId: payload.replyToId ?? params.replyToId,
-        threadId: params.threadId,
-        session: params.session,
-        mirror: params.mirror,
-      });
 
       // Run message_sending plugin hook (may modify content or cancel)
       const hookResult = await applyMessageSendingHook({
@@ -781,10 +781,10 @@ async function deliverOutboundPayloadsCore(
         to,
         channel,
         accountId,
-        conversationId: initialHookMetadata.conversationId,
-        threadId: initialHookMetadata.threadId,
-        sessionKey: initialHookMetadata.sessionKey,
-        agentId: initialHookMetadata.agentId,
+        conversationId: payloadHookMetadata.conversationId,
+        threadId: payloadHookMetadata.threadId,
+        sessionKey: payloadHookMetadata.sessionKey,
+        agentId: payloadHookMetadata.agentId,
       });
       if (hookResult.cancelled) {
         continue;
@@ -797,7 +797,7 @@ async function deliverOutboundPayloadsCore(
         replyToId: effectivePayload.replyToId ?? params.replyToId ?? undefined,
         threadId: params.threadId ?? undefined,
       };
-      const payloadHookMetadata = resolveOutboundHookMetadata({
+      payloadHookMetadata = resolveOutboundHookMetadata({
         channel,
         to,
         conversationId: to,
@@ -892,8 +892,8 @@ async function deliverOutboundPayloadsCore(
         success: false,
         content: payloadSummary.text,
         error: err instanceof Error ? err.message : String(err),
-        conversationId: hookMetadata.conversationId,
-        threadId: hookMetadata.threadId,
+        conversationId: payloadHookMetadata.conversationId,
+        threadId: payloadHookMetadata.threadId,
       });
       if (!params.bestEffort) {
         throw err;

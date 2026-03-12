@@ -482,6 +482,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
   let lifecycleStarted = false;
   let releaseEarlyGatewayErrorGuard = () => {};
   let deactivateMessageHandler: (() => void) | undefined;
+  let waitForMessageHandlerIdle: (() => Promise<void>) | undefined;
   let autoPresenceController: ReturnType<typeof createDiscordAutoPresenceController> | null = null;
   let botUserId: string | undefined;
   try {
@@ -708,6 +709,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
       discordRestFetch,
     });
     deactivateMessageHandler = messageHandler.deactivate;
+    waitForMessageHandlerIdle = messageHandler.waitForIdle;
     const trackInboundEvent = opts.setStatus
       ? () => {
           const at = Date.now();
@@ -780,6 +782,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
     });
   } finally {
     deactivateMessageHandler?.();
+    await waitForMessageHandlerIdle?.();
     forgetDiscordManagedBotIdentity({
       botUserId,
       accountId: account.accountId,

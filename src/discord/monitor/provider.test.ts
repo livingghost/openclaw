@@ -32,10 +32,12 @@ const {
   listNativeCommandSpecsForConfigMock,
   listSkillCommandsForAgentsMock,
   monitorLifecycleMock,
+  rememberDiscordManagedBotIdentityMock,
   resolveDiscordAccountMock,
   resolveDiscordAllowlistConfigMock,
   resolveNativeCommandsEnabledMock,
   resolveNativeSkillsEnabledMock,
+  forgetDiscordManagedBotIdentityMock,
 } = vi.hoisted(() => {
   const createdBindingManagers: Array<{ stop: ReturnType<typeof vi.fn> }> = [];
   return {
@@ -55,6 +57,7 @@ const {
         vi.fn(async () => undefined),
         {
           deactivate: vi.fn(),
+          waitForIdle: vi.fn(async () => undefined),
         },
       ),
     ),
@@ -87,6 +90,7 @@ const {
     monitorLifecycleMock: vi.fn(async (params: { threadBindings: { stop: () => void } }) => {
       params.threadBindings.stop();
     }),
+    rememberDiscordManagedBotIdentityMock: vi.fn(),
     resolveDiscordAccountMock: vi.fn(() => ({
       accountId: "default",
       token: "cfg-token",
@@ -101,6 +105,7 @@ const {
       guildEntries: undefined,
       allowFrom: undefined,
     })),
+    forgetDiscordManagedBotIdentityMock: vi.fn(),
     resolveNativeCommandsEnabledMock: vi.fn(() => true),
     resolveNativeSkillsEnabledMock: vi.fn(() => false),
   };
@@ -195,6 +200,8 @@ vi.mock("../../runtime.js", () => ({
 }));
 
 vi.mock("../accounts.js", () => ({
+  forgetDiscordManagedBotIdentity: forgetDiscordManagedBotIdentityMock,
+  rememberDiscordManagedBotIdentity: rememberDiscordManagedBotIdentityMock,
   resolveDiscordAccount: resolveDiscordAccountMock,
 }));
 
@@ -360,6 +367,7 @@ describe("monitorDiscordProvider", () => {
         vi.fn(async () => undefined),
         {
           deactivate: vi.fn(),
+          waitForIdle: vi.fn(async () => undefined),
         },
       ),
     );
@@ -383,6 +391,8 @@ describe("monitorDiscordProvider", () => {
     monitorLifecycleMock.mockClear().mockImplementation(async (params) => {
       params.threadBindings.stop();
     });
+    rememberDiscordManagedBotIdentityMock.mockClear();
+    forgetDiscordManagedBotIdentityMock.mockClear();
     resolveDiscordAccountMock.mockClear();
     resolveDiscordAllowlistConfigMock.mockClear().mockResolvedValue({
       guildEntries: undefined,
@@ -723,6 +733,38 @@ describe("monitorDiscordProvider", () => {
     expect(getPluginCommandSpecsMock).toHaveBeenCalledWith("discord");
     expect(commandNames).toContain("cmd");
     expect(commandNames).toContain("cron_jobs");
+  });
+
+  it("waits for inbound handler idle before forgetting managed bot identity", async () => {
+    const { monitorDiscordProvider } = await import("./provider.js");
+    const deactivate = vi.fn();
+    const waitForIdle = vi.fn(async () => undefined);
+    createDiscordMessageHandlerMock.mockImplementation(() =>
+      Object.assign(vi.fn(async () => undefined), {
+        deactivate,
+        waitForIdle,
+      }),
+    );
+
+    await monitorDiscordProvider({
+      config: baseConfig(),
+      runtime: baseRuntime(),
+    });
+
+    expect(rememberDiscordManagedBotIdentityMock).toHaveBeenCalledWith({
+      botUserId: "bot-1",
+      accountId: "default",
+    });
+    expect(deactivate).toHaveBeenCalledTimes(1);
+    expect(waitForIdle).toHaveBeenCalledTimes(1);
+    expect(forgetDiscordManagedBotIdentityMock).toHaveBeenCalledWith({
+      botUserId: "bot-1",
+      accountId: "default",
+    });
+    expect(deactivate.mock.invocationCallOrder[0]).toBeLessThan(waitForIdle.mock.invocationCallOrder[0]);
+    expect(waitForIdle.mock.invocationCallOrder[0]).toBeLessThan(
+      forgetDiscordManagedBotIdentityMock.mock.invocationCallOrder[0],
+    );
   });
 
   it("reports connected status on startup and shutdown", async () => {

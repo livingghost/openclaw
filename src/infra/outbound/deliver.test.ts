@@ -1275,6 +1275,47 @@ describe("deliverOutboundPayloads", () => {
       expect.objectContaining({ channelId: "whatsapp" }),
     );
   });
+
+  it("emits payload-level threadId in message_sent failure metadata for Slack threaded sends", async () => {
+    hookMocks.runner.hasHooks.mockReturnValue(true);
+    const sendText = vi.fn().mockRejectedValue(new Error("downstream failed"));
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "slack",
+          source: "test",
+          plugin: createOutboundTestPlugin({
+            id: "slack",
+            outbound: { deliveryMode: "direct", sendText },
+          }),
+        },
+      ]),
+    );
+
+    await expect(
+      deliverOutboundPayloads({
+        cfg: {},
+        channel: "slack",
+        to: "C123",
+        payloads: [{ text: "hi", replyToId: "1741719181.424242" }],
+        threadId: null,
+        session: { key: "agent:sender:session", agentId: "sender-agent" },
+      }),
+    ).rejects.toThrow("downstream failed");
+
+    expect(hookMocks.runner.runMessageSent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          threadId: "1741719181.424242",
+          sessionKey: "agent:sender:session",
+          agentId: "sender-agent",
+        }),
+        success: false,
+        error: "downstream failed",
+      }),
+      expect.anything(),
+    );
+  });
 });
 
 const emptyRegistry = createTestRegistry([]);
