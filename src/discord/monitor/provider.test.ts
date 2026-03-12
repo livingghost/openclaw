@@ -740,10 +740,13 @@ describe("monitorDiscordProvider", () => {
     const deactivate = vi.fn();
     const waitForIdle = vi.fn(async () => undefined);
     createDiscordMessageHandlerMock.mockImplementation(() =>
-      Object.assign(vi.fn(async () => undefined), {
-        deactivate,
-        waitForIdle,
-      }),
+      Object.assign(
+        vi.fn(async () => undefined),
+        {
+          deactivate,
+          waitForIdle,
+        },
+      ),
     );
 
     await monitorDiscordProvider({
@@ -761,7 +764,9 @@ describe("monitorDiscordProvider", () => {
       botUserId: "bot-1",
       accountId: "default",
     });
-    expect(deactivate.mock.invocationCallOrder[0]).toBeLessThan(waitForIdle.mock.invocationCallOrder[0]);
+    expect(deactivate.mock.invocationCallOrder[0]).toBeLessThan(
+      waitForIdle.mock.invocationCallOrder[0],
+    );
     expect(waitForIdle.mock.invocationCallOrder[0]).toBeLessThan(
       forgetDiscordManagedBotIdentityMock.mock.invocationCallOrder[0],
     );
