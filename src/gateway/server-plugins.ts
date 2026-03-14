@@ -129,6 +129,28 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       }
       return { runId };
     },
+    async enqueue(params) {
+      const payload = await dispatchGatewayMethod<{ runId?: string }>("agent.enqueue", {
+        sessionKey: params.sessionKey,
+        message: params.message,
+        deliver: params.deliver ?? false,
+        ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
+        ...(params.lane && { lane: params.lane }),
+        ...(params.idempotencyKey && { idempotencyKey: params.idempotencyKey }),
+      });
+      const runId = payload?.runId;
+      if (typeof runId !== "string" || !runId) {
+        throw new Error("Gateway agent.enqueue method returned an invalid runId.");
+      }
+      return { runId };
+    },
+    async abort(params) {
+      const payload = await dispatchGatewayMethod<{ aborted?: boolean }>("agent.abort", {
+        runId: params.runId,
+        ...(params.sessionKey && { sessionKey: params.sessionKey }),
+      });
+      return { aborted: payload?.aborted === true };
+    },
     async waitForRun(params) {
       const payload = await dispatchGatewayMethod<{ status?: string; error?: string }>(
         "agent.wait",
@@ -173,6 +195,7 @@ export function loadGatewayPlugins(params: {
   coreGatewayHandlers: Record<string, GatewayRequestHandler>;
   baseMethods: string[];
 }) {
+  const gatewaySubagentRuntime = createGatewaySubagentRuntime();
   const pluginRegistry = loadOpenClawPlugins({
     config: params.cfg,
     workspaceDir: params.workspaceDir,
@@ -184,7 +207,7 @@ export function loadGatewayPlugins(params: {
     },
     coreGatewayHandlers: params.coreGatewayHandlers,
     runtimeOptions: {
-      subagent: createGatewaySubagentRuntime(),
+      subagent: gatewaySubagentRuntime,
     },
   });
   const pluginMethods = Object.keys(pluginRegistry.gatewayHandlers);
