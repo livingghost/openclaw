@@ -42,10 +42,12 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateAgentAbortParams,
   validateAgentIdentityParams,
   validateAgentParams,
   validateAgentWaitParams,
 } from "../protocol/index.js";
+import { abortAgentRunById, resolveAgentRunExpiresAtMs } from "../agent-abort.js";
 import { performGatewaySessionReset } from "../session-reset-service.js";
 import {
   canonicalizeSpawnedByForAgent,
@@ -142,7 +144,123 @@ function dispatchAgentRunFromGateway(params: {
         runId: params.runId,
         error: formatForLog(err),
       });
+    })
+    .finally(() => {
+      params.context.agentAbortControllers.delete(params.runId);
     });
+}
+
+function startAcceptedAgentRunFromGateway(params: {
+  request: {
+    thinking?: string;
+    timeout?: number;
+    lane?: string;
+    extraSystemPrompt?: string;
+    internalEvents?: AgentInternalEvent[];
+    deliver?: boolean;
+  };
+  message: string;
+  images: Array<{ type: "image"; data: string; mimeType: string }>;
+  resolvedTo: string | undefined;
+  resolvedSessionId: string | undefined;
+  resolvedSessionKey: string;
+  resolvedChannel: string;
+  resolvedAccountId: string | undefined;
+  resolvedThreadId: string | undefined;
+  resolvedGroupId: string | undefined;
+  resolvedGroupChannel: string | undefined;
+  resolvedGroupSpace: string | undefined;
+  deliveryTargetMode: string | undefined;
+  originMessageChannel: string;
+  spawnedByValue: string | undefined;
+  sessionEntry: SessionEntry | undefined;
+  senderIsOwner: boolean;
+  inputProvenance: InputProvenance | undefined;
+  bestEffortDeliver: boolean;
+  runId: string;
+  idempotencyKey: string;
+  respond: GatewayRequestHandlerOptions["respond"];
+  context: GatewayRequestHandlerOptions["context"];
+}) {
+  const requestedTimeoutMs =
+    typeof params.request.timeout === "number" && Number.isFinite(params.request.timeout)
+      ? Math.max(0, Math.floor(params.request.timeout))
+      : undefined;
+  const deliver =
+    params.request.deliver === true && params.resolvedChannel !== INTERNAL_MESSAGE_CHANNEL;
+  const accepted = {
+    runId: params.runId,
+    status: "accepted" as const,
+    acceptedAt: Date.now(),
+  };
+  const agentAbortController = new AbortController();
+  params.context.agentAbortControllers.set(params.runId, {
+    controller: agentAbortController,
+    sessionKey: params.resolvedSessionKey,
+    startedAtMs: accepted.acceptedAt,
+    expiresAtMs: resolveAgentRunExpiresAtMs({
+      now: accepted.acceptedAt,
+      timeoutMs: requestedTimeoutMs,
+    }),
+  });
+  setGatewayDedupeEntry({
+    dedupe: params.context.dedupe,
+    key: `agent:${params.idempotencyKey}`,
+    entry: {
+      ts: Date.now(),
+      ok: true,
+      payload: accepted,
+    },
+  });
+  params.respond(true, accepted, undefined, { runId: params.runId });
+
+  dispatchAgentRunFromGateway({
+    ingressOpts: {
+      message: params.message,
+      images: params.images,
+      to: params.resolvedTo,
+      sessionId: params.resolvedSessionId,
+      sessionKey: params.resolvedSessionKey,
+      thinking: params.request.thinking,
+      deliver,
+      deliveryTargetMode: params.deliveryTargetMode,
+      channel: params.resolvedChannel,
+      accountId: params.resolvedAccountId,
+      threadId: params.resolvedThreadId,
+      runContext: {
+        messageChannel: params.originMessageChannel,
+        accountId: params.resolvedAccountId,
+        groupId: params.resolvedGroupId,
+        groupChannel: params.resolvedGroupChannel,
+        groupSpace: params.resolvedGroupSpace,
+        currentThreadTs:
+          params.resolvedThreadId != null ? String(params.resolvedThreadId) : undefined,
+      },
+      groupId: params.resolvedGroupId,
+      groupChannel: params.resolvedGroupChannel,
+      groupSpace: params.resolvedGroupSpace,
+      spawnedBy: params.spawnedByValue,
+      timeout: params.request.timeout?.toString(),
+      bestEffortDeliver: params.bestEffortDeliver,
+      messageChannel: params.originMessageChannel,
+      runId: params.runId,
+      lane: params.request.lane,
+      extraSystemPrompt: params.request.extraSystemPrompt,
+      internalEvents: params.request.internalEvents,
+      inputProvenance: params.inputProvenance,
+      abortSignal: agentAbortController.signal,
+      // Internal-only: allow workspace override for spawned subagent runs.
+      workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({
+        spawnedBy: params.spawnedByValue,
+        workspaceDir: params.sessionEntry?.spawnedWorkspaceDir,
+      }),
+      senderIsOwner: params.senderIsOwner,
+    },
+    runId: params.runId,
+    idempotencyKey: params.idempotencyKey,
+    respond: params.respond,
+    context: params.context,
+  });
 }
 
 export const agentHandlers: GatewayRequestHandlers = {
@@ -559,72 +677,62 @@ export const agentHandlers: GatewayRequestHandlers = {
         ? INTERNAL_MESSAGE_CHANNEL
         : resolvedChannel);
 
-    const deliver = request.deliver === true && resolvedChannel !== INTERNAL_MESSAGE_CHANNEL;
-
-    const accepted = {
-      runId,
-      status: "accepted" as const,
-      acceptedAt: Date.now(),
-    };
-    // Store an in-flight ack so retries do not spawn a second run.
-    setGatewayDedupeEntry({
-      dedupe: context.dedupe,
-      key: `agent:${idem}`,
-      entry: {
-        ts: Date.now(),
-        ok: true,
-        payload: accepted,
-      },
-    });
-    respond(true, accepted, undefined, { runId });
-
     const resolvedThreadId = explicitThreadId ?? deliveryPlan.resolvedThreadId;
 
-    dispatchAgentRunFromGateway({
-      ingressOpts: {
-        message,
-        images,
-        to: resolvedTo,
-        sessionId: resolvedSessionId,
-        sessionKey: resolvedSessionKey,
-        thinking: request.thinking,
-        deliver,
-        deliveryTargetMode,
-        channel: resolvedChannel,
-        accountId: resolvedAccountId,
-        threadId: resolvedThreadId,
-        runContext: {
-          messageChannel: originMessageChannel,
-          accountId: resolvedAccountId,
-          groupId: resolvedGroupId,
-          groupChannel: resolvedGroupChannel,
-          groupSpace: resolvedGroupSpace,
-          currentThreadTs: resolvedThreadId != null ? String(resolvedThreadId) : undefined,
-        },
-        groupId: resolvedGroupId,
-        groupChannel: resolvedGroupChannel,
-        groupSpace: resolvedGroupSpace,
-        spawnedBy: spawnedByValue,
-        timeout: request.timeout?.toString(),
-        bestEffortDeliver,
-        messageChannel: originMessageChannel,
-        runId,
-        lane: request.lane,
-        extraSystemPrompt: request.extraSystemPrompt,
-        internalEvents: request.internalEvents,
-        inputProvenance,
-        // Internal-only: allow workspace override for spawned subagent runs.
-        workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({
-          spawnedBy: spawnedByValue,
-          workspaceDir: sessionEntry?.spawnedWorkspaceDir,
-        }),
-        senderIsOwner,
-      },
+    startAcceptedAgentRunFromGateway({
+      request,
+      message,
+      images,
+      resolvedTo,
+      resolvedSessionId,
+      resolvedSessionKey,
+      resolvedChannel,
+      resolvedAccountId,
+      resolvedThreadId,
+      resolvedGroupId,
+      resolvedGroupChannel,
+      resolvedGroupSpace,
+      deliveryTargetMode,
+      originMessageChannel,
+      spawnedByValue,
+      sessionEntry,
+      senderIsOwner,
+      inputProvenance,
+      bestEffortDeliver,
       runId,
       idempotencyKey: idem,
       respond,
       context,
     });
+  },
+  "agent.enqueue": async ({ params, respond, context, client, isWebchatConnect }) => {
+    await agentHandlers.agent({ params, respond, context, client, isWebchatConnect });
+  },
+  "agent.abort": ({ params, respond, context }) => {
+    if (!validateAgentAbortParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid agent.abort params: ${formatValidationErrors(validateAgentAbortParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const request = params as { runId: string; sessionKey?: string };
+    const runId = request.runId.trim();
+    const sessionKey =
+      typeof request.sessionKey === "string" && request.sessionKey.trim()
+        ? request.sessionKey.trim()
+        : undefined;
+    const result = abortAgentRunById({
+      agentAbortControllers: context.agentAbortControllers,
+      runId,
+      sessionKey,
+      reason: "rpc",
+    });
+    respond(true, { ok: true, aborted: result.aborted, runId });
   },
   "agent.identity.get": ({ params, respond }) => {
     if (!validateAgentIdentityParams(params)) {
