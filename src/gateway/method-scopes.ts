@@ -90,6 +90,8 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "send",
     "poll",
     "agent",
+    "agent.enqueue",
+    "agent.abort",
     "agent.wait",
     "wake",
     "talk.mode",

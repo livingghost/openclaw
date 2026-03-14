@@ -129,6 +129,21 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       }
       return { runId };
     },
+    async enqueue(params) {
+      const payload = await dispatchGatewayMethod<{ runId?: string }>("agent.enqueue", {
+        sessionKey: params.sessionKey,
+        message: params.message,
+        deliver: params.deliver ?? false,
+        ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
+        ...(params.lane && { lane: params.lane }),
+        ...(params.idempotencyKey && { idempotencyKey: params.idempotencyKey }),
+      });
+      const runId = payload?.runId;
+      if (typeof runId !== "string" || !runId) {
+        throw new Error("Gateway agent.enqueue method returned an invalid runId.");
+      }
+      return { runId };
+    },
     async waitForRun(params) {
       const payload = await dispatchGatewayMethod<{ status?: string; error?: string }>(
         "agent.wait",
@@ -145,6 +160,13 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
         status,
         ...(typeof payload?.error === "string" && payload.error && { error: payload.error }),
       };
+    },
+    async abort(params) {
+      const payload = await dispatchGatewayMethod<{ aborted?: boolean }>("agent.abort", {
+        runId: params.runId,
+        ...(params.sessionKey && { sessionKey: params.sessionKey }),
+      });
+      return { aborted: payload?.aborted === true };
     },
     getSessionMessages,
     async getSession(params) {
