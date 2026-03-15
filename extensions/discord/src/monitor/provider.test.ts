@@ -862,7 +862,7 @@ describe("monitorDiscordProvider", () => {
     try {
       const { monitorDiscordProvider } = await import("./provider.js");
       const deactivate = vi.fn();
-      const waitForIdle = vi.fn(() => new Promise<void>(() => undefined));
+      const waitForIdle = vi.fn(() => new Promise<undefined>(() => undefined));
       createDiscordMessageHandlerMock.mockImplementation(() =>
         Object.assign(
           vi.fn(async () => undefined),
