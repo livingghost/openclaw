@@ -50,6 +50,13 @@ function getLastDispatchedContext(): GatewayRequestContext | undefined {
   return call?.context;
 }
 
+function getLastDispatchedRequest():
+  | (GatewayRequestOptions["req"] & { params?: Record<string, unknown> })
+  | undefined {
+  const call = handleGatewayRequest.mock.calls.at(-1)?.[0];
+  return call?.req;
+}
+
 async function importServerPluginsModule(): Promise<ServerPluginsModule> {
   return import("./server-plugins.js");
 }
@@ -84,6 +91,7 @@ beforeEach(() => {
   handleGatewayRequest.mockImplementation(async (opts: HandleGatewayRequestOptions) => {
     switch (opts.req.method) {
       case "agent":
+      case "agent.enqueue":
         opts.respond(true, { runId: "run-1" });
         return;
       case "agent.wait":
@@ -233,5 +241,53 @@ describe("loadGatewayPlugins", () => {
       | (GatewayRequestContext & { marker: string })
       | undefined;
     expect(dispatched?.marker).toBe("after-mutation");
+  });
+
+  test("mints idempotency keys for plugin subagent requests when absent", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = createSubagentRuntime(serverPlugins);
+
+    await runtime.run({ sessionKey: "s-run", message: "hello" });
+    const runRequest = getLastDispatchedRequest();
+    expect(runRequest?.method).toBe("agent");
+    expect(runRequest?.params).toMatchObject({
+      sessionKey: "s-run",
+      message: "hello",
+      deliver: false,
+    });
+    expect(runRequest?.params?.idempotencyKey).toEqual(
+      expect.stringMatching(/^plugin-subagent:agent:s-run:/),
+    );
+
+    await runtime.enqueue({ sessionKey: "s-enqueue", message: "queued" });
+    const enqueueRequest = getLastDispatchedRequest();
+    expect(enqueueRequest?.method).toBe("agent.enqueue");
+    expect(enqueueRequest?.params).toMatchObject({
+      sessionKey: "s-enqueue",
+      message: "queued",
+      deliver: false,
+    });
+    expect(enqueueRequest?.params?.idempotencyKey).toEqual(
+      expect.stringMatching(/^plugin-subagent:agent\.enqueue:s-enqueue:/),
+    );
+  });
+
+  test("preserves caller-provided idempotency keys for plugin subagent requests", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = createSubagentRuntime(serverPlugins);
+
+    await runtime.run({
+      sessionKey: "s-run",
+      message: "hello",
+      idempotencyKey: "plugin-run-idem",
+    });
+    expect(getLastDispatchedRequest()?.params?.idempotencyKey).toBe("plugin-run-idem");
+
+    await runtime.enqueue({
+      sessionKey: "s-enqueue",
+      message: "queued",
+      idempotencyKey: "plugin-enqueue-idem",
+    });
+    expect(getLastDispatchedRequest()?.params?.idempotencyKey).toBe("plugin-enqueue-idem");
   });
 });

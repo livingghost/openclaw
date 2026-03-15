@@ -105,6 +105,19 @@ async function dispatchGatewayMethod<T>(
   return result.payload as T;
 }
 
+function resolvePluginSubagentIdempotencyKey(params: {
+  idempotencyKey?: string;
+  sessionKey: string;
+  method: "agent" | "agent.enqueue";
+}): string {
+  const provided =
+    typeof params.idempotencyKey === "string" ? params.idempotencyKey.trim() : "";
+  if (provided) {
+    return provided;
+  }
+  return `plugin-subagent:${params.method}:${params.sessionKey}:${randomUUID()}`;
+}
+
 function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
   const getSessionMessages: PluginRuntime["subagent"]["getSessionMessages"] = async (params) => {
     const payload = await dispatchGatewayMethod<{ messages?: unknown[] }>("sessions.get", {
@@ -120,9 +133,13 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
         sessionKey: params.sessionKey,
         message: params.message,
         deliver: params.deliver ?? false,
+        idempotencyKey: resolvePluginSubagentIdempotencyKey({
+          idempotencyKey: params.idempotencyKey,
+          sessionKey: params.sessionKey,
+          method: "agent",
+        }),
         ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
         ...(params.lane && { lane: params.lane }),
-        ...(params.idempotencyKey && { idempotencyKey: params.idempotencyKey }),
       });
       const runId = payload?.runId;
       if (typeof runId !== "string" || !runId) {
@@ -135,9 +152,13 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
         sessionKey: params.sessionKey,
         message: params.message,
         deliver: params.deliver ?? false,
+        idempotencyKey: resolvePluginSubagentIdempotencyKey({
+          idempotencyKey: params.idempotencyKey,
+          sessionKey: params.sessionKey,
+          method: "agent.enqueue",
+        }),
         ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
         ...(params.lane && { lane: params.lane }),
-        ...(params.idempotencyKey && { idempotencyKey: params.idempotencyKey }),
       });
       const runId = payload?.runId;
       if (typeof runId !== "string" || !runId) {
