@@ -44,6 +44,7 @@ import { createSubsystemLogger } from "../../../../src/logging/subsystem.js";
 import { getPluginCommandSpecs } from "../../../../src/plugins/commands.js";
 import { createNonExitingRuntime, type RuntimeEnv } from "../../../../src/runtime.js";
 import { summarizeStringEntries } from "../../../../src/shared/string-sample.js";
+import { withTimeout } from "../../../../src/utils/with-timeout.js";
 import {
   forgetDiscordManagedBotIdentity,
   rememberDiscordManagedBotIdentity,
@@ -95,6 +96,7 @@ import {
   reconcileAcpThreadBindingsOnStartup,
 } from "./thread-bindings.js";
 import { formatThreadBindingDurationLabel } from "./thread-bindings.messages.js";
+import { normalizeDiscordInboundWorkerTimeoutMs } from "./timeouts.js";
 
 export type MonitorDiscordOpts = {
   token?: string;
@@ -157,6 +159,15 @@ function appendPluginCommandSpecs(params: {
 
 const DISCORD_ACP_STATUS_PROBE_TIMEOUT_MS = 8_000;
 const DISCORD_ACP_STALE_RUNNING_ACTIVITY_MS = 2 * 60 * 1000;
+const DISCORD_MESSAGE_HANDLER_IDLE_TIMEOUT_CAP_MS = 15_000;
+
+function resolveDiscordMessageHandlerIdleTimeoutMs(raw: number | undefined): number {
+  const normalized = normalizeDiscordInboundWorkerTimeoutMs(raw);
+  if (!normalized) {
+    return DISCORD_MESSAGE_HANDLER_IDLE_TIMEOUT_CAP_MS;
+  }
+  return Math.min(normalized, DISCORD_MESSAGE_HANDLER_IDLE_TIMEOUT_CAP_MS);
+}
 
 function isLegacyMissingSessionError(message: string): boolean {
   return (
@@ -990,7 +1001,20 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
     });
   } finally {
     deactivateMessageHandler?.();
-    await waitForMessageHandlerIdle?.();
+    if (waitForMessageHandlerIdle) {
+      const idleTimeoutMs = resolveDiscordMessageHandlerIdleTimeoutMs(
+        discordCfg.inboundWorker?.runTimeoutMs,
+      );
+      try {
+        await withTimeout(waitForMessageHandlerIdle(), idleTimeoutMs);
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message === "timeout"
+            ? `discord: inbound handler did not drain within ${idleTimeoutMs}ms during teardown; continuing shutdown`
+            : `discord: inbound handler idle wait failed during teardown: ${formatErrorMessage(error)}`;
+        runtime.log?.(warn(message));
+      }
+    }
     forgetDiscordManagedBotIdentity({
       botUserId,
       accountId: account.accountId,

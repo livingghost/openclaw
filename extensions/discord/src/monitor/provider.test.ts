@@ -857,6 +857,48 @@ describe("monitorDiscordProvider", () => {
     );
   });
 
+  it("bounds inbound handler idle wait during teardown", async () => {
+    vi.useFakeTimers();
+    try {
+      const { monitorDiscordProvider } = await import("./provider.js");
+      const deactivate = vi.fn();
+      const waitForIdle = vi.fn(() => new Promise<void>(() => undefined));
+      createDiscordMessageHandlerMock.mockImplementation(() =>
+        Object.assign(
+          vi.fn(async () => undefined),
+          {
+            deactivate,
+            waitForIdle,
+          },
+        ),
+      );
+      mockResolvedDiscordAccountConfig({
+        inboundWorker: { runTimeoutMs: 5_000 },
+      });
+      const runtime = baseRuntime();
+
+      const monitorPromise = monitorDiscordProvider({
+        config: baseConfig(),
+        runtime,
+      });
+
+      await vi.advanceTimersByTimeAsync(5_100);
+      await expect(monitorPromise).resolves.toBeUndefined();
+
+      expect(deactivate).toHaveBeenCalledTimes(1);
+      expect(waitForIdle).toHaveBeenCalledTimes(1);
+      expect(forgetDiscordManagedBotIdentityMock).toHaveBeenCalledWith({
+        botUserId: "bot-1",
+        accountId: "default",
+      });
+      expect(runtime.log).toHaveBeenCalledWith(
+        expect.stringContaining("inbound handler did not drain within 5000ms during teardown"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports connected status on startup and shutdown", async () => {
     const { monitorDiscordProvider } = await import("./provider.js");
     const setStatus = vi.fn();
