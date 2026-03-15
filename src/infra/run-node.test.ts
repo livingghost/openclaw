@@ -38,9 +38,8 @@ async function readJsonFile(filePath: string): Promise<unknown> {
 }
 
 function expectedBuildSpawn(platform: NodeJS.Platform = process.platform) {
-  return platform === "win32"
-    ? ["cmd.exe", "/d", "/s", "/c", "pnpm", "exec", "tsdown", "--no-clean"]
-    : ["pnpm", "exec", "tsdown", "--no-clean"];
+  void platform;
+  return [process.execPath, "scripts/tsdown-build.mjs", "--no-clean"];
 }
 
 describe("run-node script", () => {
@@ -513,16 +512,9 @@ describe("run-node script", () => {
 
       expect(exitCode).toBe(0);
       expect(spawnCalls).toEqual([[process.execPath, "openclaw.mjs", "status"]]);
-<<<<<<< HEAD
-      await expect(
-        fs.readFile(distManifestPath, "utf-8").then((raw) => JSON.parse(raw)),
-      ).resolves.toMatchObject({
-        id: "demo",
-=======
       await expect(readJsonFile(distManifestPath)).resolves.toMatchObject({
         id: "demo",
         configSchema: { type: "object" },
->>>>>>> 77582aa1a (Test run-node plugin metadata semantically.)
       });
     });
   });
@@ -589,16 +581,9 @@ describe("run-node script", () => {
 
       expect(exitCode).toBe(0);
       expect(spawnCalls).toEqual([[process.execPath, "openclaw.mjs", "status"]]);
-<<<<<<< HEAD
-      await expect(
-        fs.readFile(distManifestPath, "utf-8").then((raw) => JSON.parse(raw)),
-      ).resolves.toMatchObject({
-        id: "demo",
-=======
       await expect(readJsonFile(distManifestPath)).resolves.toMatchObject({
         id: "demo",
         configSchema: { type: "object" },
->>>>>>> 77582aa1a (Test run-node plugin metadata semantically.)
       });
     });
   });
