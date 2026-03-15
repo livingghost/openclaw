@@ -52,7 +52,6 @@ function maybeBootstrapChannelPlugin(params: {
       config: autoEnabled,
       workspaceDir,
       inheritSharedRuntimeOptions: true,
-      activateGlobalHookRunner: false,
     });
   } catch {
     // Allow a follow-up resolution attempt if bootstrap failed transiently.

@@ -124,7 +124,6 @@ describe("outbound channel resolution", () => {
       config: { autoEnabled: true },
       workspaceDir: "/tmp/workspace",
       inheritSharedRuntimeOptions: true,
-      activateGlobalHookRunner: false,
     });
 
     getChannelPluginMock.mockReturnValue(undefined);
