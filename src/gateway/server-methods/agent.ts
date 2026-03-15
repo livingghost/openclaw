@@ -101,6 +101,7 @@ function dispatchAgentRunFromGateway(params: {
   ingressOpts: Parameters<typeof agentCommandFromIngress>[0];
   runId: string;
   idempotencyKey: string;
+  abortController: AbortController;
   respond: GatewayRequestHandlerOptions["respond"];
   context: GatewayRequestHandlerOptions["context"];
 }) {
@@ -148,7 +149,10 @@ function dispatchAgentRunFromGateway(params: {
       });
     })
     .finally(() => {
-      params.context.agentAbortControllers.delete(params.runId);
+      const active = params.context.agentAbortControllers.get(params.runId);
+      if (active?.controller === params.abortController) {
+        params.context.agentAbortControllers.delete(params.runId);
+      }
     });
 }
 
@@ -257,6 +261,7 @@ function startAcceptedAgentRunFromGateway(params: {
     },
     runId: params.runId,
     idempotencyKey: params.idempotencyKey,
+    abortController: agentAbortController,
     respond: params.respond,
     context: params.context,
   });

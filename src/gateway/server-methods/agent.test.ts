@@ -545,6 +545,70 @@ describe("gateway agent handler", () => {
     expect(respond).toHaveBeenCalledWith(true, { ok: true, aborted: true, runId: "run-1" });
   });
 
+  it("keeps a newer abort controller entry when an older run with the same id finishes", async () => {
+    mockMainSessionEntry({ sessionId: "existing-session-id" });
+    mocks.updateSessionStore.mockResolvedValue(undefined);
+
+    let resolveOlderRun:
+      | ((value: { payloads: Array<{ text: string }>; meta: { durationMs: number } }) => void)
+      | undefined;
+    mocks.agentCommand.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOlderRun = resolve;
+        }),
+    );
+
+    const context = makeContext();
+    const respond = vi.fn();
+    await invokeAgent(
+      {
+        message: "older run",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        idempotencyKey: "shared-run-id",
+      },
+      { respond, reqId: "shared-run-id", context },
+    );
+
+    const olderEntry = context.agentAbortControllers.get("shared-run-id");
+    expect(olderEntry).toBeDefined();
+
+    const newerController = new AbortController();
+    context.agentAbortControllers.set("shared-run-id", {
+      controller: newerController,
+      sessionKey: "agent:main:main",
+      startedAtMs: Date.now(),
+      expiresAtMs: Date.now() + 60_000,
+    });
+
+    resolveOlderRun?.({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+    await vi.waitFor(() => expect(respond).toHaveBeenCalledTimes(2));
+
+    expect(context.agentAbortControllers.get("shared-run-id")?.controller).toBe(newerController);
+
+    const abortRespond = vi.fn();
+    await agentHandlers["agent.abort"]({
+      params: { runId: "shared-run-id", sessionKey: "agent:main:main" },
+      respond: abortRespond as never,
+      context,
+      req: { type: "req", id: "agent-abort-shared", method: "agent.abort" },
+      client: null,
+      isWebchatConnect: () => false,
+    });
+
+    expect(newerController.signal.aborted).toBe(true);
+    expect(context.agentAbortControllers.has("shared-run-id")).toBe(false);
+    expect(abortRespond).toHaveBeenCalledWith(true, {
+      ok: true,
+      aborted: true,
+      runId: "shared-run-id",
+    });
+  });
+
   it("prunes legacy main alias keys when writing a canonical session entry", async () => {
     mocks.loadSessionEntry.mockReturnValue({
       cfg: {
