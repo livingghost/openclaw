@@ -36,9 +36,9 @@ function clean(value: string | undefined | null): string | undefined {
 
 export function resolveReplyRootId(params: ReplyRootIdentityParams): string | undefined {
   return (
-    clean(params.rootMessageId) ??
     clean(params.replyToIdFull) ??
     clean(params.replyToId) ??
+    clean(params.rootMessageId) ??
     clean(params.messageIdFull) ??
     clean(params.messageId)
   );

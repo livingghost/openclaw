@@ -46,6 +46,7 @@ const ROUTABLE_TEST_CHANNELS = new Set([
 ]);
 
 beforeEach(() => {
+  runEmbeddedPiAgentMock.mockReset();
   routeReplyMock.mockReset();
   routeReplyMock.mockResolvedValue({ ok: true });
   isRoutableChannelMock.mockReset();

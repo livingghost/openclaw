@@ -214,11 +214,6 @@ export async function runReplyAgent(params: {
     queueMode: resolvedQueue.mode,
   });
   const recentSentReplyRootKey = buildRecentSentReplyRootKeyForRun(followupRun);
-  if (hasRecentSentReplyRoot(recentSentReplyRootKey)) {
-    await touchActiveSessionEntry();
-    typing.cleanup();
-    return undefined;
-  }
 
   if (activeRunQueueAction === "drop") {
     typing.cleanup();
@@ -226,6 +221,11 @@ export async function runReplyAgent(params: {
   }
 
   if (activeRunQueueAction === "enqueue-followup") {
+    if (hasRecentSentReplyRoot(recentSentReplyRootKey)) {
+      await touchActiveSessionEntry();
+      typing.cleanup();
+      return undefined;
+    }
     enqueueFollowupRun(queueKey, followupRun, resolvedQueue);
     await touchActiveSessionEntry();
     typing.cleanup();

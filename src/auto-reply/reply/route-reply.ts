@@ -222,7 +222,9 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
     });
 
     const last = results.at(-1);
-    markRecentSentReplyRoot(recentReplyRootKey);
+    if (last) {
+      markRecentSentReplyRoot(recentReplyRootKey);
+    }
     return { ok: true, messageId: last?.messageId };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

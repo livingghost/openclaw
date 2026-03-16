@@ -359,6 +359,37 @@ describe("runReplyAgent heartbeat followup guard", () => {
     expect(state.runEmbeddedPiAgentMock).not.toHaveBeenCalled();
   });
 
+  it("does not drop fresh inbound runs when the reply root was sent recently", async () => {
+    const params = createMinimalRun({
+      opts: { isHeartbeat: false },
+      isActive: false,
+      shouldFollowup: false,
+      replyRootId: "root-1",
+      runOverrides: {
+        agentId: "agent",
+      },
+    });
+    const recentKey = buildRecentSentReplyRootKeyForRun({
+      ...params.followupRun,
+      run: {
+        ...params.followupRun.run,
+        agentId: "agent",
+        sessionId: "session",
+        sessionKey: "main",
+      },
+    });
+    markRecentSentReplyRoot(recentKey);
+    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "fresh reply" }],
+      meta: {},
+    });
+
+    const result = await params.run();
+
+    expect(state.runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({ text: "fresh reply" }));
+  });
+
   it("drains followup queue when an unexpected exception escapes the run path", async () => {
     const accounting = await import("./session-run-accounting.js");
     const persistSpy = vi

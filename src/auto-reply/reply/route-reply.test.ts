@@ -236,6 +236,29 @@ describe("routeReply", () => {
     expect(hasRecentSentReplyRoot(key)).toBe(true);
   });
 
+  it("does not mark reply roots when delivery produced no outbound messages", async () => {
+    mocks.deliverOutboundPayloads.mockResolvedValueOnce([]);
+    const key = buildRecentSentReplyRootKey({
+      scopeKey: "session:1",
+      agentId: "main",
+      channel: "slack",
+      to: "channel:C123",
+      replyRootId: "root-empty",
+    });
+
+    await routeReply({
+      payload: { text: "hi" },
+      channel: "slack",
+      to: "channel:C123",
+      sessionKey: "session:1",
+      replyRootAgentId: "main",
+      replyRootId: "root-empty",
+      cfg: {} as never,
+    });
+
+    expect(hasRecentSentReplyRoot(key)).toBe(false);
+  });
+
   it("passes reply root metadata into outbound delivery hooks", async () => {
     mocks.deliverOutboundPayloads.mockResolvedValueOnce([{ messageId: "m1", channel: "slack" }]);
 
