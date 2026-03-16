@@ -23,6 +23,8 @@ export type FollowupRun = {
   prompt: string;
   /** Provider message ID, when available (for deduplication). */
   messageId?: string;
+  /** Stable reply/root target used to deduplicate retries across thread turns. */
+  replyRootId?: string;
   summaryLine?: string;
   enqueuedAt: number;
   /**

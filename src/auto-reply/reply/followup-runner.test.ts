@@ -4,6 +4,11 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadSessionStore, saveSessionStore, type SessionEntry } from "../../config/sessions.js";
 import type { FollowupRun } from "./queue.js";
+import {
+  buildRecentSentReplyRootKeyForRun,
+  markRecentSentReplyRoot,
+  resetRecentSentReplyRootDedupe,
+} from "./reply-root-dedupe.js";
 import { createMockFollowupRun, createMockTypingController } from "./test-helpers.js";
 
 const runEmbeddedPiAgentMock = vi.fn();
@@ -44,6 +49,7 @@ beforeEach(() => {
   routeReplyMock.mockReset();
   routeReplyMock.mockResolvedValue({ ok: true });
   isRoutableChannelMock.mockReset();
+  resetRecentSentReplyRootDedupe();
   isRoutableChannelMock.mockImplementation((ch: string | undefined) =>
     Boolean(ch?.trim() && ROUTABLE_TEST_CHANNELS.has(ch.trim().toLowerCase())),
   );
@@ -437,6 +443,25 @@ describe("createFollowupRunner messaging tool dedupe", () => {
         threadId: "1739142736.000100",
       }),
     );
+    expect(onBlockReply).not.toHaveBeenCalled();
+  });
+
+  it("skips queued runs when the reply root was already sent recently", async () => {
+    const queued = createQueuedRun({
+      replyRootId: "root-1",
+      run: {
+        agentId: "agent",
+        sessionKey: "main",
+      },
+    });
+    markRecentSentReplyRoot(buildRecentSentReplyRootKeyForRun(queued));
+    const onBlockReply = createAsyncReplySpy();
+    const runner = createMessagingDedupeRunner(onBlockReply);
+
+    await runner(queued);
+
+    expect(runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+    expect(routeReplyMock).not.toHaveBeenCalled();
     expect(onBlockReply).not.toHaveBeenCalled();
   });
 });

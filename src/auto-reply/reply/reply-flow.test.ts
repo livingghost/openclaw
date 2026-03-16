@@ -897,6 +897,7 @@ afterAll(() => {
 function createRun(params: {
   prompt: string;
   messageId?: string;
+  replyRootId?: string;
   originatingChannel?: FollowupRun["originatingChannel"];
   originatingTo?: string;
   originatingAccountId?: string;
@@ -905,6 +906,7 @@ function createRun(params: {
   return {
     prompt: params.prompt,
     messageId: params.messageId,
+    replyRootId: params.replyRootId,
     enqueuedAt: Date.now(),
     originatingChannel: params.originatingChannel,
     originatingTo: params.originatingTo,
@@ -1036,6 +1038,42 @@ describe("followup queue deduplication", () => {
 
     expect(redelivery).toBe(false);
     expect(calls).toHaveLength(1);
+  });
+
+  it("deduplicates different message ids when they share the same reply root", async () => {
+    const key = `test-dedup-reply-root-${Date.now()}`;
+    const settings: QueueSettings = {
+      mode: "collect",
+      debounceMs: 0,
+      cap: 50,
+      dropPolicy: "summarize",
+    };
+
+    const first = enqueueFollowupRun(
+      key,
+      createRun({
+        prompt: "first",
+        messageId: "m1",
+        replyRootId: "root-1",
+        originatingChannel: "discord",
+        originatingTo: "channel:123",
+      }),
+      settings,
+    );
+    expect(first).toBe(true);
+
+    const second = enqueueFollowupRun(
+      key,
+      createRun({
+        prompt: "second",
+        messageId: "m2",
+        replyRootId: "root-1",
+        originatingChannel: "discord",
+        originatingTo: "channel:123",
+      }),
+      settings,
+    );
+    expect(second).toBe(false);
   });
 
   it("deduplicates same message_id across distinct enqueue module instances", async () => {

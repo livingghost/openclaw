@@ -13,6 +13,11 @@ import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../../test-utils/channel-plugins.js";
 import { createIMessageTestPlugin } from "../../test-utils/imessage-test-plugin.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
+import {
+  buildRecentSentReplyRootKey,
+  hasRecentSentReplyRoot,
+  resetRecentSentReplyRootDedupe,
+} from "./reply-root-dedupe.js";
 
 const mocks = vi.hoisted(() => ({
   sendMessageDiscord: vi.fn(async () => ({ messageId: "m1", channelId: "c1" })),
@@ -139,6 +144,7 @@ describe("routeReply", () => {
   beforeEach(() => {
     setActivePluginRegistry(defaultRegistry);
     mocks.deliverOutboundPayloads.mockImplementation(actualDeliver.deliverOutboundPayloads);
+    resetRecentSentReplyRootDedupe();
   });
 
   afterEach(() => {
@@ -204,6 +210,53 @@ describe("routeReply", () => {
       "channel:C123",
       "[openclaw] hi",
       expect.any(Object),
+    );
+  });
+
+  it("marks recently sent reply roots after a successful routed send", async () => {
+    const key = buildRecentSentReplyRootKey({
+      scopeKey: "session:1",
+      agentId: "main",
+      channel: "slack",
+      to: "channel:C123",
+      replyRootId: "root-1",
+    });
+    expect(hasRecentSentReplyRoot(key)).toBe(false);
+
+    await routeReply({
+      payload: { text: "hi" },
+      channel: "slack",
+      to: "channel:C123",
+      sessionKey: "session:1",
+      replyRootAgentId: "main",
+      replyRootId: "root-1",
+      cfg: {} as never,
+    });
+
+    expect(hasRecentSentReplyRoot(key)).toBe(true);
+  });
+
+  it("passes reply root metadata into outbound delivery hooks", async () => {
+    mocks.deliverOutboundPayloads.mockResolvedValueOnce([{ messageId: "m1", channel: "slack" }]);
+
+    await routeReply({
+      payload: { text: "hi" },
+      channel: "slack",
+      to: "channel:C123",
+      sessionKey: "session:2",
+      replyRootAgentId: "main",
+      replyRootId: "root-2",
+      cfg: {} as never,
+    });
+
+    expect(mocks.deliverOutboundPayloads).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hookMetadata: expect.objectContaining({
+          sessionKey: "session:2",
+          replyRootId: "root-2",
+          replyRootKey: expect.any(String),
+        }),
+      }),
     );
   });
 

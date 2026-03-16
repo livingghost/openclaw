@@ -52,6 +52,7 @@ export type CanonicalSentMessageHookContext = {
   messageId?: string;
   isGroup?: boolean;
   groupId?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export function deriveInboundMessageHookContext(
@@ -122,6 +123,7 @@ export function buildCanonicalSentMessageHookContext(params: {
   messageId?: string;
   isGroup?: boolean;
   groupId?: string;
+  metadata?: Record<string, unknown>;
 }): CanonicalSentMessageHookContext {
   return {
     to: params.to,
@@ -134,6 +136,7 @@ export function buildCanonicalSentMessageHookContext(params: {
     messageId: params.messageId,
     isGroup: params.isGroup,
     groupId: params.groupId,
+    metadata: params.metadata,
   };
 }
 
@@ -180,6 +183,7 @@ export function toPluginMessageSentEvent(
     content: canonical.content,
     success: canonical.success,
     ...(canonical.error ? { error: canonical.error } : {}),
+    ...(canonical.metadata ? { metadata: canonical.metadata } : {}),
   };
 }
 
@@ -269,5 +273,6 @@ export function toInternalMessageSentContext(
     messageId: canonical.messageId,
     ...(canonical.isGroup != null ? { isGroup: canonical.isGroup } : {}),
     ...(canonical.groupId ? { groupId: canonical.groupId } : {}),
+    ...(canonical.metadata ? { metadata: canonical.metadata } : {}),
   };
 }

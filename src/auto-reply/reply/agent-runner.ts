@@ -52,6 +52,10 @@ import { resolveOriginMessageProvider, resolveOriginMessageTo } from "./origin-r
 import { readPostCompactionContext } from "./post-compaction-context.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
+import {
+  buildRecentSentReplyRootKeyForRun,
+  hasRecentSentReplyRoot,
+} from "./reply-root-dedupe.js";
 import { createReplyMediaPathNormalizer } from "./reply-media-paths.js";
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
@@ -209,6 +213,12 @@ export async function runReplyAgent(params: {
     shouldFollowup,
     queueMode: resolvedQueue.mode,
   });
+  const recentSentReplyRootKey = buildRecentSentReplyRootKeyForRun(followupRun);
+  if (hasRecentSentReplyRoot(recentSentReplyRootKey)) {
+    await touchActiveSessionEntry();
+    typing.cleanup();
+    return undefined;
+  }
 
   if (activeRunQueueAction === "drop") {
     typing.cleanup();

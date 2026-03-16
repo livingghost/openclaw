@@ -89,6 +89,8 @@ export type MessageSentHookContext = {
   isGroup?: boolean;
   /** Group or channel identifier, if applicable */
   groupId?: string;
+  /** Additional provider-specific metadata */
+  metadata?: Record<string, unknown>;
 };
 
 export type MessageSentHookEvent = InternalHookEvent & {

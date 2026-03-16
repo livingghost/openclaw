@@ -28,6 +28,10 @@ import {
   filterMessagingToolMediaDuplicates,
   shouldSuppressMessagingToolReplies,
 } from "./reply-payloads.js";
+import {
+  buildRecentSentReplyRootKeyForRun,
+  hasRecentSentReplyRoot,
+} from "./reply-root-dedupe.js";
 import { resolveReplyToMode } from "./reply-threading.js";
 import { isRoutableChannel, routeReply } from "./route-reply.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
@@ -100,8 +104,11 @@ export function createFollowupRunner(params: {
           channel: originatingChannel,
           to: originatingTo,
           sessionKey: queued.run.sessionKey,
+          replyRootScopeKey: queued.run.sessionKey ?? queued.run.sessionId,
+          replyRootAgentId: queued.run.agentId,
           accountId: queued.originatingAccountId,
           threadId: queued.originatingThreadId,
+          replyRootId: queued.replyRootId,
           cfg: queued.run.config,
         });
         if (!result.ok) {
@@ -131,6 +138,10 @@ export function createFollowupRunner(params: {
 
   return async (queued: FollowupRun) => {
     try {
+      const recentReplyRootKey = buildRecentSentReplyRootKeyForRun(queued);
+      if (hasRecentSentReplyRoot(recentReplyRootKey)) {
+        return;
+      }
       const runId = crypto.randomUUID();
       const shouldSurfaceToControlUi = isInternalMessageChannel(
         resolveOriginMessageProvider({

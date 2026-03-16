@@ -14,6 +14,11 @@ import {
   type FollowupRun,
   type QueueSettings,
 } from "./queue.js";
+import {
+  buildRecentSentReplyRootKeyForRun,
+  markRecentSentReplyRoot,
+  resetRecentSentReplyRootDedupe,
+} from "./reply-root-dedupe.js";
 import { createMockTypingController } from "./test-helpers.js";
 
 type AgentRunParams = {
@@ -96,6 +101,7 @@ beforeEach(() => {
   state.runCliAgentMock.mockClear();
   vi.mocked(enqueueFollowupRun).mockClear();
   vi.mocked(scheduleFollowupDrain).mockClear();
+  resetRecentSentReplyRootDedupe();
   vi.stubEnv("OPENCLAW_TEST_FAST", "1");
 });
 
@@ -111,6 +117,7 @@ function createMinimalRun(params?: {
   isActive?: boolean;
   shouldFollowup?: boolean;
   resolvedQueueMode?: string;
+  replyRootId?: string;
   runOverrides?: Partial<FollowupRun["run"]>;
 }) {
   const typing = createMockTypingController();
@@ -127,6 +134,7 @@ function createMinimalRun(params?: {
     prompt: "hello",
     summaryLine: "hello",
     enqueuedAt: Date.now(),
+    replyRootId: params?.replyRootId,
     run: {
       sessionId: "session",
       sessionKey,
@@ -153,6 +161,7 @@ function createMinimalRun(params?: {
 
   return {
     typing,
+    followupRun,
     opts,
     run: async () => {
       const runReplyAgent = await getRunReplyAgent();
@@ -318,6 +327,35 @@ describe("runReplyAgent heartbeat followup guard", () => {
 
     expect(result).toBeUndefined();
     expect(vi.mocked(enqueueFollowupRun)).toHaveBeenCalledTimes(1);
+    expect(state.runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("drops followups when the reply root was already sent recently", async () => {
+    const params = createMinimalRun({
+      opts: { isHeartbeat: false },
+      isActive: true,
+      shouldFollowup: true,
+      resolvedQueueMode: "collect",
+      replyRootId: "root-1",
+      runOverrides: {
+        agentId: "agent",
+      },
+    });
+    const recentKey = buildRecentSentReplyRootKeyForRun({
+      ...params.followupRun,
+      run: {
+        ...params.followupRun.run,
+        agentId: "agent",
+        sessionId: "session",
+        sessionKey: "main",
+      },
+    });
+    markRecentSentReplyRoot(recentKey);
+
+    const result = await params.run();
+
+    expect(result).toBeUndefined();
+    expect(vi.mocked(enqueueFollowupRun)).not.toHaveBeenCalled();
     expect(state.runEmbeddedPiAgentMock).not.toHaveBeenCalled();
   });
 

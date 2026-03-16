@@ -18,9 +18,23 @@ const RECENT_QUEUE_MESSAGE_IDS = resolveGlobalSingleton(RECENT_QUEUE_MESSAGE_IDS
   }),
 );
 
-function buildRecentMessageIdKey(run: FollowupRun, queueKey: string): string | undefined {
+function resolveRunDedupeIdentity(
+  run: FollowupRun,
+): { kind: "reply-root" | "message-id"; value: string } | undefined {
+  const replyRootId = run.replyRootId?.trim();
+  if (replyRootId) {
+    return { kind: "reply-root", value: replyRootId };
+  }
   const messageId = run.messageId?.trim();
-  if (!messageId) {
+  if (messageId) {
+    return { kind: "message-id", value: messageId };
+  }
+  return undefined;
+}
+
+function buildRecentMessageIdKey(run: FollowupRun, queueKey: string): string | undefined {
+  const identity = resolveRunDedupeIdentity(run);
+  if (!identity) {
     return undefined;
   }
   // Use JSON tuple serialization to avoid delimiter-collision edge cases when
@@ -32,7 +46,8 @@ function buildRecentMessageIdKey(run: FollowupRun, queueKey: string): string | u
     run.originatingTo ?? "",
     run.originatingAccountId ?? "",
     run.originatingThreadId == null ? "" : String(run.originatingThreadId),
-    messageId,
+    identity.kind,
+    identity.value,
   ]);
 }
 
@@ -47,9 +62,16 @@ function isRunAlreadyQueued(
     item.originatingAccountId === run.originatingAccountId &&
     item.originatingThreadId === run.originatingThreadId;
 
-  const messageId = run.messageId?.trim();
-  if (messageId) {
-    return items.some((item) => item.messageId?.trim() === messageId && hasSameRouting(item));
+  const identity = resolveRunDedupeIdentity(run);
+  if (identity) {
+    return items.some((item) => {
+      const itemIdentity = resolveRunDedupeIdentity(item);
+      return (
+        itemIdentity?.kind === identity.kind &&
+        itemIdentity.value === identity.value &&
+        hasSameRouting(item)
+      );
+    });
   }
   if (!allowPromptFallback) {
     return false;

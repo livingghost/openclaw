@@ -22,6 +22,10 @@ import {
   formatBtwTextForExternalDelivery,
   shouldSuppressReasoningPayload,
 } from "./reply-payloads.js";
+import {
+  buildRecentSentReplyRootKey,
+  markRecentSentReplyRoot,
+} from "./reply-root-dedupe.js";
 
 let deliverRuntimePromise: Promise<
   typeof import("../../infra/outbound/deliver-runtime.js")
@@ -55,6 +59,12 @@ export type RouteReplyParams = {
   isGroup?: boolean;
   /** Group or channel identifier for correlation with received events */
   groupId?: string;
+  /** Stable inbound reply/root target for duplicate suppression. */
+  replyRootId?: string;
+  /** Optional override for the reply-root dedupe scope key. */
+  replyRootScopeKey?: string;
+  /** Optional override for the reply-root dedupe agent identity. */
+  replyRootAgentId?: string;
 };
 
 export type RouteReplyResult = {
@@ -160,6 +170,15 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
       ? String(threadId)
       : undefined);
   const resolvedThreadId = channelId === "slack" ? null : (threadId ?? null);
+  const recentReplyRootKey = buildRecentSentReplyRootKey({
+    scopeKey: params.replyRootScopeKey ?? params.sessionKey,
+    agentId: params.replyRootAgentId ?? resolvedAgentId,
+    channel: channelId,
+    to,
+    accountId: accountId ?? undefined,
+    threadId: threadId ?? null,
+    replyRootId: params.replyRootId,
+  });
 
   try {
     // Provider docking: this is an execution boundary (we're about to send).
@@ -180,6 +199,15 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
       threadId: resolvedThreadId,
       session: outboundSession,
       abortSignal,
+      hookMetadata: {
+        sessionKey: params.sessionKey,
+        replyRootScopeKey: params.replyRootScopeKey ?? params.sessionKey,
+        agentId: params.replyRootAgentId ?? resolvedAgentId,
+        replyRootId: params.replyRootId,
+        replyRootKey: recentReplyRootKey,
+        replyToId: resolvedReplyToId,
+        threadId: threadId ?? null,
+      },
       mirror:
         params.mirror !== false && params.sessionKey
           ? {
@@ -194,6 +222,7 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
     });
 
     const last = results.at(-1);
+    markRecentSentReplyRoot(recentReplyRootKey);
     return { ok: true, messageId: last?.messageId };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

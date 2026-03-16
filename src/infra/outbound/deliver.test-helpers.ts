@@ -19,6 +19,7 @@ type DeliverMockState = {
   hooks: {
     runner: {
       hasHooks: (...args: unknown[]) => boolean;
+      runMessageSending: (...args: unknown[]) => Promise<unknown>;
       runMessageSent: (...args: unknown[]) => Promise<void>;
     };
   };
@@ -43,6 +44,7 @@ export const deliverMocks: DeliverMockState = {
   hooks: {
     runner: {
       hasHooks: () => false,
+      runMessageSending: async () => undefined,
       runMessageSent: async () => {},
     },
   },
@@ -68,6 +70,9 @@ const _mocks = vi.hoisted(() => ({
 const _hookMocks = vi.hoisted(() => ({
   runner: {
     hasHooks: vi.fn(() => deliverMocks.hooks.runner.hasHooks()),
+    runMessageSending: vi.fn(
+      async (...args: unknown[]) => await deliverMocks.hooks.runner.runMessageSending(...args),
+    ),
     runMessageSent: vi.fn(
       async (...args: unknown[]) => await deliverMocks.hooks.runner.runMessageSent(...args),
     ),
@@ -182,6 +187,7 @@ export const emptyRegistry = createTestRegistry([]);
 export function resetDeliverTestState() {
   setActivePluginRegistry(defaultRegistry);
   deliverMocks.hooks.runner.hasHooks = () => false;
+  deliverMocks.hooks.runner.runMessageSending = async () => undefined;
   deliverMocks.hooks.runner.runMessageSent = async () => {};
   deliverMocks.internalHooks.createInternalHookEvent = createInternalHookEventPayload;
   deliverMocks.internalHooks.triggerInternalHook = async () => {};
@@ -201,6 +207,7 @@ export function clearDeliverTestRegistry() {
 
 export function resetDeliverTestMocks(params?: { includeSessionMocks?: boolean }) {
   hookMocks.runner.hasHooks.mockClear();
+  hookMocks.runner.runMessageSending.mockClear();
   hookMocks.runner.runMessageSent.mockClear();
   internalHookMocks.createInternalHookEvent.mockClear();
   internalHookMocks.triggerInternalHook.mockClear();

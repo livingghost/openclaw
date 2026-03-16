@@ -26,7 +26,10 @@ async function runChunkedWhatsAppDelivery(params?: {
   });
 }
 
-async function deliverSingleWhatsAppForHookTest(params?: { sessionKey?: string }) {
+async function deliverSingleWhatsAppForHookTest(params?: {
+  sessionKey?: string;
+  hookMetadata?: Record<string, unknown>;
+}) {
   const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
   await deliverOutboundPayloads({
     cfg: whatsappChunkConfig,
@@ -34,6 +37,7 @@ async function deliverSingleWhatsAppForHookTest(params?: { sessionKey?: string }
     to: "+1555",
     payloads: [{ text: "hello" }],
     deps: { sendWhatsApp },
+    hookMetadata: params?.hookMetadata,
     ...(params?.sessionKey ? { session: { key: params.sessionKey } } : {}),
   });
 }
@@ -251,6 +255,36 @@ describe("deliverOutboundPayloads lifecycle", () => {
     expect(hookMocks.runner.runMessageSent).toHaveBeenCalledWith(
       expect.objectContaining({ to: "+1555", content: "hello", success: true }),
       expect.objectContaining({ channelId: "whatsapp" }),
+    );
+  });
+
+  it("forwards hook metadata to message_sending and message_sent hooks", async () => {
+    hookMocks.runner.hasHooks.mockReturnValue(true);
+
+    await deliverSingleWhatsAppForHookTest({
+      hookMetadata: {
+        replyRootId: "root-1",
+        replyRootKey: "dedupe-key-1",
+      },
+    });
+
+    expect(hookMocks.runner.runMessageSending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          replyRootId: "root-1",
+          replyRootKey: "dedupe-key-1",
+        }),
+      }),
+      expect.any(Object),
+    );
+    expect(hookMocks.runner.runMessageSent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          replyRootId: "root-1",
+          replyRootKey: "dedupe-key-1",
+        }),
+      }),
+      expect.any(Object),
     );
   });
 

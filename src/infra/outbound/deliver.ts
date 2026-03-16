@@ -256,6 +256,8 @@ type DeliverOutboundPayloadsCoreParams = {
   session?: OutboundSessionContext;
   mirror?: DeliveryMirror;
   silent?: boolean;
+  /** Optional metadata forwarded to message lifecycle hooks. */
+  hookMetadata?: Record<string, unknown>;
 };
 
 export type DeliverOutboundPayloadsParams = DeliverOutboundPayloadsCoreParams & {
@@ -351,6 +353,7 @@ function createMessageSentEmitter(params: {
   sessionKeyForInternalHooks?: string;
   mirrorIsGroup?: boolean;
   mirrorGroupId?: string;
+  hookMetadata?: Record<string, unknown>;
 }): { emitMessageSent: (event: MessageSentEvent) => void; hasMessageSentHooks: boolean } {
   const hasMessageSentHooks = params.hookRunner?.hasHooks("message_sent") ?? false;
   const canEmitInternalHook = Boolean(params.sessionKeyForInternalHooks);
@@ -369,6 +372,7 @@ function createMessageSentEmitter(params: {
       messageId: event.messageId,
       isGroup: params.mirrorIsGroup,
       groupId: params.mirrorGroupId,
+      metadata: params.hookMetadata,
     });
     if (hasMessageSentHooks) {
       fireAndForgetHook(
@@ -411,6 +415,7 @@ async function applyMessageSendingHook(params: {
   to: string;
   channel: Exclude<OutboundChannel, "none">;
   accountId?: string;
+  hookMetadata?: Record<string, unknown>;
 }): Promise<{
   cancelled: boolean;
   payload: ReplyPayload;
@@ -432,6 +437,7 @@ async function applyMessageSendingHook(params: {
           channel: params.channel,
           accountId: params.accountId,
           mediaUrls: params.payloadSummary.mediaUrls,
+          ...params.hookMetadata,
         },
       },
       {
@@ -698,6 +704,7 @@ async function deliverOutboundPayloadsCore(
     sessionKeyForInternalHooks,
     mirrorIsGroup,
     mirrorGroupId,
+    hookMetadata: params.hookMetadata,
   });
   const hasMessageSendingHooks = hookRunner?.hasHooks("message_sending") ?? false;
   if (hasMessageSentHooks && params.session?.agentId && !sessionKeyForInternalHooks) {
@@ -724,6 +731,7 @@ async function deliverOutboundPayloadsCore(
         to,
         channel,
         accountId,
+        hookMetadata: params.hookMetadata,
       });
       if (hookResult.cancelled) {
         continue;
