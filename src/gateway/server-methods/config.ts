@@ -252,6 +252,8 @@ function loadSchemaWithPlugins(): ConfigSchemaResponse {
     runtimeOptions: {
       allowGatewaySubagentBinding: true,
     },
+    inheritSharedRuntimeOptions: true,
+    activateGlobalHookRunner: false,
     logger: {
       info: () => {},
       warn: () => {},

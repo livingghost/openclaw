@@ -248,6 +248,7 @@ function loadChannelSetupPluginRegistry(params: {
     config: params.cfg,
     workspaceDir,
     cache: false,
+    activateGlobalHookRunner: false,
     logger: createPluginLoaderLogger(log),
     onlyPluginIds: params.onlyPluginIds,
     includeSetupOnlyChannelPlugins: true,

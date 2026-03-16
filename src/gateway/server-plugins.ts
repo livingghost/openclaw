@@ -5,6 +5,11 @@ import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { setGatewaySubagentRuntime } from "../plugins/runtime/index.js";
+import {
+  clearSharedPluginRuntimeOptions,
+  getSharedPluginRuntimeOptions,
+  setSharedPluginRuntimeOptions,
+} from "../plugins/runtime/shared-runtime-options.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { ADMIN_SCOPE, WRITE_SCOPE } from "./method-scopes.js";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "./protocol/client-info.js";
@@ -288,6 +293,18 @@ async function dispatchGatewayMethod<T>(
   return result.payload as T;
 }
 
+function resolvePluginSubagentIdempotencyKey(params: {
+  idempotencyKey?: string;
+  sessionKey: string;
+  method: "agent" | "agent.enqueue";
+}): string {
+  const provided = typeof params.idempotencyKey === "string" ? params.idempotencyKey.trim() : "";
+  if (provided) {
+    return provided;
+  }
+  return `plugin-subagent:${params.method}:${params.sessionKey}:${randomUUID()}`;
+}
+
 function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
   const getSessionMessages: PluginRuntime["subagent"]["getSessionMessages"] = async (params) => {
     const payload = await dispatchGatewayMethod<{ messages?: unknown[] }>("sessions.get", {
@@ -325,11 +342,15 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
           sessionKey: params.sessionKey,
           message: params.message,
           deliver: params.deliver ?? false,
+          idempotencyKey: resolvePluginSubagentIdempotencyKey({
+            idempotencyKey: params.idempotencyKey,
+            sessionKey: params.sessionKey,
+            method: "agent",
+          }),
           ...(allowOverride && params.provider && { provider: params.provider }),
           ...(allowOverride && params.model && { model: params.model }),
           ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
           ...(params.lane && { lane: params.lane }),
-          ...(params.idempotencyKey && { idempotencyKey: params.idempotencyKey }),
         },
         {
           allowSyntheticModelOverride,
@@ -340,6 +361,32 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
         throw new Error("Gateway agent method returned an invalid runId.");
       }
       return { runId };
+    },
+    async enqueue(params) {
+      const payload = await dispatchGatewayMethod<{ runId?: string }>("agent.enqueue", {
+        sessionKey: params.sessionKey,
+        message: params.message,
+        deliver: params.deliver ?? false,
+        idempotencyKey: resolvePluginSubagentIdempotencyKey({
+          idempotencyKey: params.idempotencyKey,
+          sessionKey: params.sessionKey,
+          method: "agent.enqueue",
+        }),
+        ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
+        ...(params.lane && { lane: params.lane }),
+      });
+      const runId = payload?.runId;
+      if (typeof runId !== "string" || !runId) {
+        throw new Error("Gateway agent.enqueue method returned an invalid runId.");
+      }
+      return { runId };
+    },
+    async abort(params) {
+      const payload = await dispatchGatewayMethod<{ aborted?: boolean }>("agent.abort", {
+        runId: params.runId,
+        ...(params.sessionKey && { sessionKey: params.sessionKey }),
+      });
+      return { aborted: payload?.aborted === true };
     },
     async waitForRun(params) {
       const payload = await dispatchGatewayMethod<{ status?: string; error?: string }>(
@@ -394,28 +441,41 @@ export function loadGatewayPlugins(params: {
   logDiagnostics?: boolean;
 }) {
   setPluginSubagentOverridePolicies(params.cfg);
-  // Set the process-global gateway subagent runtime BEFORE loading plugins.
+  // Set the process-global gateway subagent runtime before loading plugins.
   // Gateway-owned registries may already exist from schema loads, so the
   // gateway path opts those runtimes into late binding rather than changing
   // the default subagent behavior for every plugin runtime in the process.
-  const gatewaySubagent = createGatewaySubagentRuntime();
-  setGatewaySubagentRuntime(gatewaySubagent);
-
-  const pluginRegistry = loadOpenClawPlugins({
-    config: params.cfg,
-    workspaceDir: params.workspaceDir,
-    logger: {
-      info: (msg) => params.log.info(msg),
-      warn: (msg) => params.log.warn(msg),
-      error: (msg) => params.log.error(msg),
-      debug: (msg) => params.log.debug(msg),
-    },
-    coreGatewayHandlers: params.coreGatewayHandlers,
-    runtimeOptions: {
-      allowGatewaySubagentBinding: true,
-    },
-    preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+  const gatewaySubagentRuntime = createGatewaySubagentRuntime();
+  setGatewaySubagentRuntime(gatewaySubagentRuntime);
+  const previousSharedRuntimeOptions = getSharedPluginRuntimeOptions();
+  setSharedPluginRuntimeOptions({
+    subagent: gatewaySubagentRuntime,
   });
+  let pluginRegistry;
+  try {
+    pluginRegistry = loadOpenClawPlugins({
+      config: params.cfg,
+      workspaceDir: params.workspaceDir,
+      logger: {
+        info: (msg) => params.log.info(msg),
+        warn: (msg) => params.log.warn(msg),
+        error: (msg) => params.log.error(msg),
+        debug: (msg) => params.log.debug(msg),
+      },
+      coreGatewayHandlers: params.coreGatewayHandlers,
+      runtimeOptions: {
+        allowGatewaySubagentBinding: true,
+      },
+      preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+    });
+  } catch (error) {
+    if (previousSharedRuntimeOptions) {
+      setSharedPluginRuntimeOptions(previousSharedRuntimeOptions);
+    } else {
+      clearSharedPluginRuntimeOptions();
+    }
+    throw error;
+  }
   const pluginMethods = Object.keys(pluginRegistry.gatewayHandlers);
   const gatewayMethods = Array.from(new Set([...params.baseMethods, ...pluginMethods]));
   if ((params.logDiagnostics ?? true) && pluginRegistry.diagnostics.length > 0) {

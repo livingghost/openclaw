@@ -68,6 +68,8 @@ export function resolvePluginTools(params: {
         }
       : undefined,
     env,
+    inheritSharedRuntimeOptions: true,
+    activateGlobalHookRunner: false,
     logger: createPluginLoaderLogger(log),
   });
 

@@ -38,8 +38,10 @@ type ProviderMonitorTestMocks = {
   listNativeCommandSpecsForConfigMock: Mock<() => NativeCommandSpecMock[]>;
   listSkillCommandsForAgentsMock: Mock<() => unknown[]>;
   monitorLifecycleMock: Mock<(params: { threadBindings: { stop: () => void } }) => Promise<void>>;
+  rememberDiscordManagedBotIdentityMock: Mock<() => void>;
   resolveDiscordAccountMock: Mock<() => unknown>;
   resolveDiscordAllowlistConfigMock: Mock<() => Promise<unknown>>;
+  forgetDiscordManagedBotIdentityMock: Mock<() => void>;
   resolveNativeCommandsEnabledMock: Mock<() => boolean>;
   resolveNativeSkillsEnabledMock: Mock<() => boolean>;
   isVerboseMock: Mock<() => boolean>;
@@ -81,6 +83,7 @@ const providerMonitorTestMocks: ProviderMonitorTestMocks = vi.hoisted(() => {
         vi.fn(async () => undefined),
         {
           deactivate: vi.fn(),
+          waitForIdle: vi.fn(async () => undefined),
         },
       ),
     ),
@@ -113,6 +116,7 @@ const providerMonitorTestMocks: ProviderMonitorTestMocks = vi.hoisted(() => {
     monitorLifecycleMock: vi.fn(async (params: { threadBindings: { stop: () => void } }) => {
       params.threadBindings.stop();
     }),
+    rememberDiscordManagedBotIdentityMock: vi.fn(),
     resolveDiscordAccountMock: vi.fn(() => ({
       accountId: "default",
       token: "cfg-token",
@@ -122,6 +126,7 @@ const providerMonitorTestMocks: ProviderMonitorTestMocks = vi.hoisted(() => {
       guildEntries: undefined,
       allowFrom: undefined,
     })),
+    forgetDiscordManagedBotIdentityMock: vi.fn(),
     resolveNativeCommandsEnabledMock: vi.fn(() => true),
     resolveNativeSkillsEnabledMock: vi.fn(() => false),
     isVerboseMock,
@@ -147,8 +152,10 @@ const {
   listNativeCommandSpecsForConfigMock,
   listSkillCommandsForAgentsMock,
   monitorLifecycleMock,
+  rememberDiscordManagedBotIdentityMock,
   resolveDiscordAccountMock,
   resolveDiscordAllowlistConfigMock,
+  forgetDiscordManagedBotIdentityMock,
   resolveNativeCommandsEnabledMock,
   resolveNativeSkillsEnabledMock,
   isVerboseMock,
@@ -199,6 +206,7 @@ export function resetDiscordProviderMonitorMocks(params?: {
       vi.fn(async () => undefined),
       {
         deactivate: vi.fn(),
+        waitForIdle: vi.fn(async () => undefined),
       },
     ),
   );
@@ -221,6 +229,7 @@ export function resetDiscordProviderMonitorMocks(params?: {
   monitorLifecycleMock.mockClear().mockImplementation(async (monitorParams) => {
     monitorParams.threadBindings.stop();
   });
+  rememberDiscordManagedBotIdentityMock.mockClear();
   resolveDiscordAccountMock.mockClear().mockReturnValue({
     accountId: "default",
     token: "cfg-token",
@@ -230,6 +239,7 @@ export function resetDiscordProviderMonitorMocks(params?: {
     guildEntries: undefined,
     allowFrom: undefined,
   });
+  forgetDiscordManagedBotIdentityMock.mockClear();
   resolveNativeCommandsEnabledMock.mockClear().mockReturnValue(true);
   resolveNativeSkillsEnabledMock.mockClear().mockReturnValue(false);
   isVerboseMock.mockClear().mockReturnValue(false);
@@ -470,3 +480,6 @@ vi.mock("../discord/src/monitor/thread-bindings.js", () => ({
   createThreadBindingManager: createThreadBindingManagerMock,
   reconcileAcpThreadBindingsOnStartup: reconcileAcpThreadBindingsOnStartupMock,
 }));
+
+
+
