@@ -978,7 +978,7 @@ describe("gateway agent handler", () => {
     }
   });
 
-  it("grace-waits when lifecycle metadata omits stopReason", async () => {
+  it("does not grace-wait for errors when lifecycle metadata omits stopReason", async () => {
     vi.useFakeTimers();
     try {
       const respond = vi.fn();
@@ -1013,12 +1013,7 @@ describe("gateway agent handler", () => {
         context,
       } as unknown as Parameters<(typeof agentHandlers)["agent.wait"]>[0]);
 
-      // Microtask-level check should not resolve yet since dedupe is pending.
       await vi.advanceTimersByTimeAsync(0);
-      expect(respond).not.toHaveBeenCalled();
-
-      // Advance past the grace window (min of timeoutMs=100, grace=250) = 100ms).
-      await vi.advanceTimersByTimeAsync(100);
 
       expect(respond).toHaveBeenCalledWith(
         true,
