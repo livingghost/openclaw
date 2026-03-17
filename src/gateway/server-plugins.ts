@@ -382,7 +382,9 @@ function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
         allowSyntheticModelOverride = true;
       }
       if (overrideRequested && !allowOverride) {
-        throw new Error("provider/model override is not authorized for this plugin subagent enqueue.");
+        throw new Error(
+          "provider/model override is not authorized for this plugin subagent enqueue.",
+        );
       }
       const payload = await dispatchGatewayMethod<{ runId?: string }>(
         "agent.enqueue",

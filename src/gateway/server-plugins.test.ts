@@ -529,7 +529,6 @@ describe("loadGatewayPlugins", () => {
     expect(log.info).not.toHaveBeenCalled();
   });
 
-
   test("publishes shared runtime options for later plugin reloads", async () => {
     const { loadGatewayPlugins } = await importServerPluginsModule();
     loadOpenClawPlugins.mockReturnValue(createRegistry([]));
