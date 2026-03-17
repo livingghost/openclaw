@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { listAgentIds } from "../../agents/agent-scope.js";
+import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import {
   normalizeSpawnedRunMetadata,
@@ -33,6 +34,7 @@ import {
   isGatewayMessageChannel,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
+import { abortAgentRunById, resolveAgentRunExpiresAtMs } from "../agent-abort.js";
 import { resolveAssistantIdentity } from "../assistant-identity.js";
 import { parseMessageWithAttachments } from "../chat-attachments.js";
 import { resolveAssistantAvatarUrl } from "../control-ui-shared.js";
@@ -42,6 +44,7 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateAgentAbortParams,
   validateAgentIdentityParams,
   validateAgentParams,
   validateAgentWaitParams,
@@ -136,6 +139,7 @@ function dispatchAgentRunFromGateway(params: {
   ingressOpts: Parameters<typeof agentCommandFromIngress>[0];
   runId: string;
   idempotencyKey: string;
+  abortController: AbortController;
   respond: GatewayRequestHandlerOptions["respond"];
   context: GatewayRequestHandlerOptions["context"];
 }) {
@@ -181,6 +185,12 @@ function dispatchAgentRunFromGateway(params: {
         runId: params.runId,
         error: formatForLog(err),
       });
+    })
+    .finally(() => {
+      const active = params.context.agentAbortControllers.get(params.runId);
+      if (active?.controller === params.abortController) {
+        params.context.agentAbortControllers.delete(params.runId);
+      }
     });
 }
 
@@ -617,11 +627,25 @@ export const agentHandlers: GatewayRequestHandlers = {
 
     const deliver = request.deliver === true && resolvedChannel !== INTERNAL_MESSAGE_CHANNEL;
 
+    const acceptedAt = Date.now();
     const accepted = {
       runId,
       status: "accepted" as const,
-      acceptedAt: Date.now(),
+      acceptedAt,
     };
+    const agentAbortController = new AbortController();
+    context.agentAbortControllers.set(runId, {
+      controller: agentAbortController,
+      sessionKey: resolvedSessionKey,
+      startedAtMs: acceptedAt,
+      expiresAtMs: resolveAgentRunExpiresAtMs({
+        now: acceptedAt,
+        timeoutMs: resolveAgentTimeoutMs({
+          cfg: cfgForAgent ?? cfg,
+          overrideSeconds: request.timeout,
+        }),
+      }),
+    });
     // Store an in-flight ack so retries do not spawn a second run.
     setGatewayDedupeEntry({
       dedupe: context.dedupe,
@@ -671,6 +695,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         extraSystemPrompt: request.extraSystemPrompt,
         internalEvents: request.internalEvents,
         inputProvenance,
+        abortSignal: agentAbortController.signal,
         // Internal-only: allow workspace override for spawned subagent runs.
         workspaceDir: resolveIngressWorkspaceOverrideForSpawnedRun({
           spawnedBy: spawnedByValue,
@@ -681,6 +706,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       },
       runId,
       idempotencyKey: idem,
+      abortController: agentAbortController,
       respond,
       context,
     });
