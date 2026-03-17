@@ -1087,6 +1087,46 @@ module.exports = { id: "skipped", register() { throw new Error("skipped plugin s
     expect(previewRegistry).not.toBe(activeRegistry);
   });
 
+  it("does not replace the active registry when hook runner activation is disabled", () => {
+    useNoBundledPlugins();
+    const activePlugin = writePlugin({
+      id: "active-plugin",
+      filename: "active-plugin.cjs",
+      body: `module.exports = { id: "active-plugin", register() {} };`,
+    });
+    const previewPlugin = writePlugin({
+      id: "preview-plugin",
+      filename: "preview-plugin.cjs",
+      body: `module.exports = { id: "preview-plugin", register() {} };`,
+    });
+
+    const activeRegistry = loadOpenClawPlugins({
+      workspaceDir: activePlugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [activePlugin.file] },
+          allow: ["active-plugin"],
+        },
+      },
+    });
+    const globalHookRunner = getGlobalHookRunner();
+
+    const previewRegistry = loadOpenClawPlugins({
+      workspaceDir: previewPlugin.dir,
+      activateGlobalHookRunner: false,
+      config: {
+        plugins: {
+          load: { paths: [previewPlugin.file] },
+          allow: ["preview-plugin"],
+        },
+      },
+    });
+
+    expect(previewRegistry.plugins.map((entry) => entry.id)).toEqual(["preview-plugin"]);
+    expect(getActivePluginRegistry()).toBe(activeRegistry);
+    expect(getGlobalHookRunner()).toBe(globalHookRunner);
+  });
+
   it("keeps the global hook runner stable while resolving plugin tools", async () => {
     useNoBundledPlugins();
     const plugin = writePlugin({

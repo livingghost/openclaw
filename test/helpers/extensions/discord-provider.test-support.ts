@@ -577,6 +577,3 @@ vi.mock("../../../extensions/discord/src/monitor/thread-bindings.js", () => ({
   createThreadBindingManager: createThreadBindingManagerMock,
   reconcileAcpThreadBindingsOnStartup: reconcileAcpThreadBindingsOnStartupMock,
 }));
-
-
-

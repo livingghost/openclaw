@@ -798,10 +798,11 @@ function activatePluginRegistry(
   cacheKey: string,
   activateGlobalHookRunner: boolean,
 ): void {
-  setActivePluginRegistry(registry, cacheKey);
-  if (activateGlobalHookRunner) {
-    initializeGlobalHookRunner(registry);
+  if (!activateGlobalHookRunner) {
+    return;
   }
+  setActivePluginRegistry(registry, cacheKey);
+  initializeGlobalHookRunner(registry);
 }
 
 export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegistry {
