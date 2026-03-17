@@ -66,7 +66,6 @@ import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 
 const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
-const AGENT_WAIT_DEDUPE_METADATA_GRACE_MS = 250;
 
 function mergeAgentWaitStructuredMetadata<T extends AgentWaitTerminalSnapshot>(
   snapshot: T,
@@ -828,10 +827,7 @@ export const agentHandlers: GatewayRequestHandlers = {
               new Promise<null>((resolve) => {
                 const timer = setTimeout(
                   () => resolve(null),
-                  Math.max(
-                    1,
-                    Math.min(timeoutMs, AGENT_WAIT_DEDUPE_METADATA_GRACE_MS, 2_147_483_647),
-                  ),
+                  Math.max(1, Math.min(timeoutMs, 2_147_483_647)),
                 );
                 timer.unref?.();
               }),
