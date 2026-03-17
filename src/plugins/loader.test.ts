@@ -423,6 +423,7 @@ describe("bundle plugins", () => {
   it("treats bundle MCP as a supported bundle surface", () => {
     useNoBundledPlugins();
     const workspaceDir = makeTempDir();
+    const stateDir = makeTempDir();
     const bundleRoot = path.join(workspaceDir, ".openclaw", "extensions", "claude-mcp");
     mkdirSafe(path.join(bundleRoot, ".claude-plugin"));
     fs.writeFileSync(
@@ -445,19 +446,21 @@ describe("bundle plugins", () => {
       "utf-8",
     );
 
-    const registry = loadOpenClawPlugins({
-      workspaceDir,
-      config: {
-        plugins: {
-          entries: {
-            "claude-mcp": {
-              enabled: true,
+    const registry = withEnv({ OPENCLAW_STATE_DIR: stateDir }, () =>
+      loadOpenClawPlugins({
+        workspaceDir,
+        config: {
+          plugins: {
+            entries: {
+              "claude-mcp": {
+                enabled: true,
+              },
             },
           },
         },
-      },
-      cache: false,
-    });
+        cache: false,
+      }),
+    );
 
     const plugin = registry.plugins.find((entry) => entry.id === "claude-mcp");
     expect(plugin?.status).toBe("loaded");

@@ -75,6 +75,19 @@ type PluginRegistrationContractEntry = {
   toolNames: string[];
 };
 
+function dedupeProvidersByIdFirst<T extends { id: string }>(entries: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const entry of entries) {
+    if (seen.has(entry.id)) {
+      continue;
+    }
+    seen.add(entry.id);
+    deduped.push(entry);
+  }
+  return deduped;
+}
+
 const bundledProviderPlugins: RegistrablePlugin[] = [
   amazonBedrockPlugin,
   anthropicPlugin,
@@ -157,9 +170,9 @@ export const providerContractRegistry: ProviderContractEntry[] = buildCapability
   select: (captured) => captured.providers,
 });
 
-export const uniqueProviderContractProviders: ProviderPlugin[] = [
-  ...new Map(providerContractRegistry.map((entry) => [entry.provider.id, entry.provider])).values(),
-];
+export const uniqueProviderContractProviders: ProviderPlugin[] = dedupeProvidersByIdFirst(
+  providerContractRegistry.map((entry) => entry.provider),
+);
 
 export const providerContractPluginIds = [
   ...new Set(providerContractRegistry.map((entry) => entry.pluginId)),
@@ -194,13 +207,11 @@ export function resolveProviderContractProvidersForPluginIds(
   pluginIds: readonly string[],
 ): ProviderPlugin[] {
   const allowed = new Set(pluginIds);
-  return [
-    ...new Map(
-      providerContractRegistry
-        .filter((entry) => allowed.has(entry.pluginId))
-        .map((entry) => [entry.provider.id, entry.provider]),
-    ).values(),
-  ];
+  return dedupeProvidersByIdFirst(
+    providerContractRegistry
+      .filter((entry) => allowed.has(entry.pluginId))
+      .map((entry) => entry.provider),
+  );
 }
 
 export const webSearchProviderContractRegistry: WebSearchProviderContractEntry[] =
