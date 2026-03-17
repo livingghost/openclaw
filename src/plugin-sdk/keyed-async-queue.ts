@@ -48,10 +48,12 @@ export class KeyedAsyncQueue {
   }
 
   async waitForIdle(): Promise<void> {
-    const tails = [...this.tails.values()];
-    if (tails.length === 0) {
-      return;
+    while (this.tails.size > 0) {
+      const tails = [...this.tails.values()];
+      if (tails.length === 0) {
+        return;
+      }
+      await Promise.allSettled(tails);
     }
-    await Promise.allSettled(tails);
   }
 }
