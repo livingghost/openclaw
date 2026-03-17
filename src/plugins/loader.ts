@@ -824,11 +824,11 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
   const onlyPluginIdSet = onlyPluginIds ? new Set(onlyPluginIds) : null;
   const includeSetupOnlyChannelPlugins = options.includeSetupOnlyChannelPlugins === true;
   const preferSetupRuntimeForChannelPlugins = options.preferSetupRuntimeForChannelPlugins === true;
-  const shouldActivate = options.activate !== false;
+  const shouldActivateGlobalHookRunner = options.activateGlobalHookRunner !== false;
+  const shouldActivate = options.activate !== false && shouldActivateGlobalHookRunner;
   const effectiveRuntimeOptions =
     options.runtimeOptions ??
     (options.inheritSharedRuntimeOptions ? getSharedPluginRuntimeOptions() : undefined);
-  const shouldActivateGlobalHookRunner = options.activateGlobalHookRunner !== false;
   // NOTE: `activate` is intentionally excluded from the cache key. All non-activating
   // (snapshot) callers pass `cache: false` via loadOnboardingPluginRegistry(), so they
   // never read from or write to the cache. Including `activate` here would be misleading
@@ -855,9 +855,9 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
   }
 
   // Clear previously registered plugin commands before reloading.
-  // Skip for non-activating (snapshot) loads and for loads that opt out of hook-runner
-  // activation to avoid wiping commands while hooks still reference the previous registry.
-  if (shouldActivate && shouldActivateGlobalHookRunner) {
+  // Skip for non-activating loads (snapshots and hook-runner-disabled loads)
+  // to avoid mutating global command routing while hooks reference the previous registry.
+  if (shouldActivate) {
     clearPluginCommands();
     clearPluginInteractiveHandlers();
   }
