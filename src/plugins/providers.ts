@@ -189,7 +189,6 @@ export function resolvePluginProviders(params: {
     onlyPluginIds: params.onlyPluginIds,
     cache: params.cache ?? false,
     activate: params.activate ?? false,
-    activateGlobalHookRunner: false,
     logger: createPluginLoaderLogger(log),
   });
 

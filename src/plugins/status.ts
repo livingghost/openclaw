@@ -81,7 +81,6 @@ export function buildPluginStatusReport(params?: {
     config,
     workspaceDir,
     env: params?.env,
-    activateGlobalHookRunner: false,
     logger: createPluginLoaderLogger(log),
   });
 

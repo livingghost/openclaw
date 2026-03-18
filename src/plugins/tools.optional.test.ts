@@ -168,7 +168,6 @@ describe("resolvePluginTools optional tools", () => {
     expect(loadOpenClawPluginsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         inheritSharedRuntimeOptions: true,
-        activateGlobalHookRunner: false,
       }),
     );
   });

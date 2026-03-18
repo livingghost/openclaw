@@ -56,7 +56,6 @@ export type PluginLoadOptions = {
   coreGatewayHandlers?: Record<string, GatewayRequestHandler>;
   runtimeOptions?: CreatePluginRuntimeOptions;
   inheritSharedRuntimeOptions?: boolean;
-  activateGlobalHookRunner?: boolean;
   cache?: boolean;
   mode?: "full" | "validate";
   onlyPluginIds?: string[];
@@ -793,15 +792,9 @@ function warnAboutUntrackedLoadedPlugins(params: {
   }
 }
 
-function activatePluginRegistry(
-  registry: PluginRegistry,
-  cacheKey: string,
-  activateGlobalHookRunner: boolean,
-): void {
+function activatePluginRegistry(registry: PluginRegistry, cacheKey: string): void {
   setActivePluginRegistry(registry, cacheKey);
-  if (activateGlobalHookRunner) {
-    initializeGlobalHookRunner(registry);
-  }
+  initializeGlobalHookRunner(registry);
 }
 
 export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegistry {
@@ -824,7 +817,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
   const includeSetupOnlyChannelPlugins = options.includeSetupOnlyChannelPlugins === true;
   const preferSetupRuntimeForChannelPlugins = options.preferSetupRuntimeForChannelPlugins === true;
   const shouldActivate = options.activate !== false;
-  const shouldActivateGlobalHookRunner = options.activateGlobalHookRunner !== false;
   const effectiveRuntimeOptions =
     options.runtimeOptions ??
     (options.inheritSharedRuntimeOptions ? getSharedPluginRuntimeOptions() : undefined);
@@ -847,7 +839,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     const cached = getCachedPluginRegistry(cacheKey);
     if (cached) {
       if (shouldActivate) {
-        activatePluginRegistry(cached, cacheKey, shouldActivateGlobalHookRunner);
+        activatePluginRegistry(cached, cacheKey);
       }
       return cached;
     }
@@ -1385,7 +1377,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     setCachedPluginRegistry(cacheKey, registry);
   }
   if (shouldActivate) {
-    activatePluginRegistry(registry, cacheKey, shouldActivateGlobalHookRunner);
+    activatePluginRegistry(registry, cacheKey);
   }
   return registry;
 }
