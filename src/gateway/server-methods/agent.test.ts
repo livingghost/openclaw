@@ -934,6 +934,7 @@ describe("gateway agent handler", () => {
           {
             controller: new AbortController(),
             sessionKey: "agent:main:main",
+            sessionId: "test-session",
             startedAtMs: Date.now(),
             expiresAtMs: Date.now() + 60_000,
           },
@@ -989,6 +990,7 @@ describe("gateway agent handler", () => {
           {
             controller: new AbortController(),
             sessionKey: "agent:main:main",
+            sessionId: "test-session",
             startedAtMs: Date.now(),
             expiresAtMs: Date.now() + 60_000,
           },
