@@ -4,9 +4,8 @@ import {
   normalizeAccountId,
   resolveAccountEntry,
   type OpenClawConfig,
-  type DiscordAccountConfig,
-  type DiscordActionConfig,
-} from "./runtime-api.js";
+} from "openclaw/plugin-sdk/account-resolution";
+import type { DiscordAccountConfig, DiscordActionConfig } from "openclaw/plugin-sdk/discord";
 import { resolveDiscordToken } from "./token.js";
 
 export type ResolvedDiscordAccount = {
@@ -21,6 +20,39 @@ export type ResolvedDiscordAccount = {
 const { listAccountIds, resolveDefaultAccountId } = createAccountListHelpers("discord");
 export const listDiscordAccountIds = listAccountIds;
 export const resolveDefaultDiscordAccountId = resolveDefaultAccountId;
+
+const managedDiscordAccountIdByBotUserId = new Map<string, string>();
+
+export function rememberDiscordManagedBotIdentity(params: {
+  botUserId: string;
+  accountId: string;
+}): void {
+  managedDiscordAccountIdByBotUserId.set(params.botUserId, params.accountId);
+}
+
+export function forgetDiscordManagedBotIdentity(params: {
+  botUserId?: string | null;
+  accountId?: string | null;
+}): void {
+  if (!params.botUserId) {
+    return;
+  }
+  if (
+    !params.accountId ||
+    managedDiscordAccountIdByBotUserId.get(params.botUserId) === params.accountId
+  ) {
+    managedDiscordAccountIdByBotUserId.delete(params.botUserId);
+  }
+}
+
+export function resolveDiscordManagedAccountIdByBotUserId(
+  botUserId?: string | null,
+): string | undefined {
+  if (!botUserId) {
+    return undefined;
+  }
+  return managedDiscordAccountIdByBotUserId.get(botUserId);
+}
 
 export function resolveDiscordAccountConfig(
   cfg: OpenClawConfig,
