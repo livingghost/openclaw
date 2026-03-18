@@ -281,8 +281,8 @@ export function applyExtraParamsToAgent(
   extraParamsOverride?: Record<string, unknown>,
   thinkingLevel?: ThinkLevel,
   agentId?: string,
-  allowedToolNames?: Set<string>,
   workspaceDir?: string,
+  allowedToolNames?: Set<string>,
 ): void {
   const resolvedExtraParams = resolveExtraParams({
     cfg,
