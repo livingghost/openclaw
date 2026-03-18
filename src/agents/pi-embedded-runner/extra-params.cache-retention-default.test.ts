@@ -164,6 +164,7 @@ describe("cacheRetention default behavior", () => {
       },
       undefined,
       undefined,
+      undefined,
       new Set(["emit_structured_result"]),
     );
 
@@ -215,6 +216,7 @@ describe("cacheRetention default behavior", () => {
       cfg,
       "openai",
       "gpt-4.1",
+      undefined,
       undefined,
       undefined,
       undefined,
