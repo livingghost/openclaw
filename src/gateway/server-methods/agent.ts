@@ -82,7 +82,9 @@ function mergeAgentWaitStructuredMetadata<T extends AgentWaitTerminalSnapshot>(
 }
 
 function isMissingAgentWaitStructuredMetadata(snapshot: AgentWaitTerminalSnapshot): boolean {
-  if (snapshot.stopReason === undefined && snapshot.status === "ok") return true;
+  if (snapshot.stopReason === undefined && snapshot.status === "ok") {
+    return true;
+  }
   return snapshot.stopReason === "tool_calls" && snapshot.pendingToolCalls === undefined;
 }
 
@@ -825,7 +827,9 @@ export const agentHandlers: GatewayRequestHandlers = {
           const dedupeMetadata =
             (await Promise.race([
               dedupePromise.finally(() => {
-                if (graceTimer != null) clearTimeout(graceTimer);
+                if (graceTimer != null) {
+                  clearTimeout(graceTimer);
+                }
               }),
               new Promise<null>((resolve) => {
                 graceTimer = setTimeout(
