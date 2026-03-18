@@ -20,6 +20,12 @@ export function resolveAgentRunExpiresAtMs(params: {
     maxMs = 24 * 60 * 60_000,
   } = params;
   const boundedTimeoutMs = Math.max(0, timeoutMs);
+  // Preserve no-timeout semantics: if the caller explicitly requested a timeout
+  // longer than the default max (including timeout=0 → MAX_SAFE_TIMEOUT_MS),
+  // skip the 24h cap to avoid force-aborting long-running workflows.
+  if (boundedTimeoutMs > maxMs) {
+    return now + boundedTimeoutMs + graceMs;
+  }
   const target = now + boundedTimeoutMs + graceMs;
   const min = now + minMs;
   const max = now + maxMs;
