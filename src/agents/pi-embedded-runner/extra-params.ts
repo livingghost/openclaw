@@ -13,8 +13,6 @@ import {
   createAnthropicBetaHeadersWrapper,
   createAnthropicFastModeWrapper,
   createAnthropicToolPayloadCompatibilityWrapper,
-  createBedrockNoCacheWrapper,
-  isAnthropicBedrockModel,
   resolveAnthropicFastMode,
   resolveAnthropicBetas,
   resolveCacheRetention,
@@ -28,15 +26,12 @@ import {
   shouldApplySiliconFlowThinkingOffCompat,
 } from "./moonshot-stream-wrappers.js";
 import {
-  createOpenAIAttributionHeadersWrapper,
-  createOpenAIDefaultTransportWrapper,
   createOpenAIFastModeWrapper,
   createOpenAIResponsesContextManagementWrapper,
   createOpenAIServiceTierWrapper,
   resolveOpenAIFastMode,
   resolveOpenAIServiceTier,
 } from "./openai-stream-wrappers.js";
-import { createZaiToolStreamWrapper } from "./zai-stream-wrappers.js";
 
 /**
  * Resolve provider-specific extra params from model config.
@@ -225,95 +220,6 @@ function createStreamFnWithExtraParams(
   return wrappedStreamFn;
 }
 
-function isGemini31Model(modelId: string): boolean {
-  const normalized = modelId.toLowerCase();
-  return normalized.includes("gemini-3.1-pro") || normalized.includes("gemini-3.1-flash");
-}
-
-function mapThinkLevelToGoogleThinkingLevel(
-  thinkingLevel: ThinkLevel,
-): "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" | undefined {
-  switch (thinkingLevel) {
-    case "minimal":
-      return "MINIMAL";
-    case "low":
-      return "LOW";
-    case "medium":
-    case "adaptive":
-      return "MEDIUM";
-    case "high":
-    case "xhigh":
-      return "HIGH";
-    default:
-      return undefined;
-  }
-}
-
-function sanitizeGoogleThinkingPayload(params: {
-  payload: unknown;
-  modelId?: string;
-  thinkingLevel?: ThinkLevel;
-}): void {
-  if (!params.payload || typeof params.payload !== "object") {
-    return;
-  }
-  const payloadObj = params.payload as Record<string, unknown>;
-  const config = payloadObj.config;
-  if (!config || typeof config !== "object") {
-    return;
-  }
-  const configObj = config as Record<string, unknown>;
-  const thinkingConfig = configObj.thinkingConfig;
-  if (!thinkingConfig || typeof thinkingConfig !== "object") {
-    return;
-  }
-  const thinkingConfigObj = thinkingConfig as Record<string, unknown>;
-  const thinkingBudget = thinkingConfigObj.thinkingBudget;
-  if (typeof thinkingBudget !== "number" || thinkingBudget >= 0) {
-    return;
-  }
-
-  // pi-ai can emit thinkingBudget=-1 for some Gemini 3.1 IDs; a negative budget
-  // is invalid for Google-compatible backends and can lead to malformed handling.
-  delete thinkingConfigObj.thinkingBudget;
-
-  if (
-    typeof params.modelId === "string" &&
-    isGemini31Model(params.modelId) &&
-    params.thinkingLevel &&
-    params.thinkingLevel !== "off" &&
-    thinkingConfigObj.thinkingLevel === undefined
-  ) {
-    const mappedLevel = mapThinkLevelToGoogleThinkingLevel(params.thinkingLevel);
-    if (mappedLevel) {
-      thinkingConfigObj.thinkingLevel = mappedLevel;
-    }
-  }
-}
-
-function createGoogleThinkingPayloadWrapper(
-  baseStreamFn: StreamFn | undefined,
-  thinkingLevel?: ThinkLevel,
-): StreamFn {
-  const underlying = baseStreamFn ?? streamSimple;
-  return (model, context, options) => {
-    const onPayload = options?.onPayload;
-    return underlying(model, context, {
-      ...options,
-      onPayload: (payload) => {
-        if (model.api === "google-generative-ai") {
-          sanitizeGoogleThinkingPayload({
-            payload,
-            modelId: model.id,
-            thinkingLevel,
-          });
-        }
-        return onPayload?.(payload, model);
-      },
-    });
-  };
-}
-
 function resolveAliasedParamValue(
   sources: Array<Record<string, unknown> | undefined>,
   snakeCaseKey: string,
@@ -405,13 +311,6 @@ export function applyExtraParamsToAgent(
     }) ?? merged;
   const sanitizedExtraParams = sanitizeToolChoiceOverride(effectiveExtraParams, allowedToolNames);
 
-  if (provider === "openai" || provider === "openai-codex") {
-    if (provider === "openai") {
-      // Default OpenAI Responses to WebSocket-first with transparent SSE fallback.
-      agent.streamFn = createOpenAIDefaultTransportWrapper(agent.streamFn);
-    }
-    agent.streamFn = createOpenAIAttributionHeadersWrapper(agent.streamFn);
-  }
   const wrappedStreamFn = createStreamFnWithExtraParams(
     agent.streamFn,
     sanitizedExtraParams,
@@ -478,7 +377,7 @@ export function applyExtraParamsToAgent(
   // Enable Z.AI tool_stream for real-time tool call streaming.
   // Enabled by default for Z.AI provider, can be disabled via params.tool_stream: false
   if (provider === "zai" || provider === "z-ai") {
-    const toolStreamEnabled = sanitizedExtraParams?.tool_stream !== false;
+    const toolStreamEnabled = effectiveExtraParams?.tool_stream !== false;
     if (toolStreamEnabled) {
       log.debug(`enabling Z.AI tool_stream for ${provider}/${modelId}`);
       agent.streamFn = createZaiToolStreamWrapper(agent.streamFn, true);
@@ -489,7 +388,7 @@ export function applyExtraParamsToAgent(
   // upstream model-ID heuristics for Gemini 3.1 variants.
   agent.streamFn = createGoogleThinkingPayloadWrapper(agent.streamFn, thinkingLevel);
 
-  const anthropicFastMode = resolveAnthropicFastMode(sanitizedExtraParams);
+  const anthropicFastMode = resolveAnthropicFastMode(effectiveExtraParams);
   if (anthropicFastMode !== undefined) {
     log.debug(`applying Anthropic fast mode=${anthropicFastMode} for ${provider}/${modelId}`);
     agent.streamFn = createAnthropicFastModeWrapper(agent.streamFn, anthropicFastMode);
