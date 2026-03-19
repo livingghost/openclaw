@@ -875,19 +875,22 @@ export async function runEmbeddedAttempt(
         activeSession.agent.streamFn = defaultSessionStreamFn;
       }
 
+      const effectiveStreamParams: Record<string, unknown> = {
+        ...params.streamParams,
+        ...(params.fastMode !== undefined ? { fastMode: params.fastMode } : {}),
+        ...(allowedToolNames.size === 0 ? { toolChoice: "none" } : {}),
+      };
       const { effectiveExtraParams } = applyExtraParamsToAgent(
         activeSession.agent,
         params.config,
         params.provider,
         params.modelId,
-        {
-          ...params.streamParams,
-          fastMode: params.fastMode,
-        },
+        effectiveStreamParams,
         params.thinkLevel,
         sessionAgentId,
         effectiveWorkspace,
         params.model,
+        allowedToolNames,
       );
       const agentTransportOverride = resolveAgentTransportOverride({
         settingsManager,

@@ -3,12 +3,14 @@ import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { SettingsManager } from "@mariozechner/pi-coding-agent";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
+import type { AgentStreamParams } from "../../commands/agent/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
   prepareProviderExtraParams as prepareProviderExtraParamsRuntime,
   wrapProviderStreamFn as wrapProviderStreamFnRuntime,
 } from "../../plugins/provider-runtime.js";
 import type { ProviderRuntimeModel } from "../../plugins/types.js";
+import { normalizeToolName } from "../tool-policy.js";
 import {
   createAnthropicBetaHeadersWrapper,
   createAnthropicFastModeWrapper,
@@ -105,8 +107,100 @@ export function resolveExtraParams(params: {
 type CacheRetentionStreamOptions = Partial<SimpleStreamOptions> & {
   cacheRetention?: "none" | "short" | "long";
   openaiWsWarmup?: boolean;
+  toolChoice?: NonNullable<AgentStreamParams["toolChoice"]>;
 };
 type SupportedTransport = Exclude<CacheRetentionStreamOptions["transport"], undefined>;
+type ToolChoiceOverride = NonNullable<AgentStreamParams["toolChoice"]>;
+
+function isToolChoiceOverride(value: unknown): value is ToolChoiceOverride {
+  if (value === "auto" || value === "none" || value === "required") {
+    return true;
+  }
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const fn = record.function;
+  return (
+    record.type === "function" &&
+    !!fn &&
+    typeof fn === "object" &&
+    typeof (fn as Record<string, unknown>).name === "string"
+  );
+}
+
+function resolveAllowedToolChoiceName(
+  rawName: string,
+  allowedToolNames?: Set<string>,
+): string | undefined {
+  if (!allowedToolNames || allowedToolNames.size === 0) {
+    return undefined;
+  }
+  const trimmed = rawName.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (allowedToolNames.has(trimmed)) {
+    return trimmed;
+  }
+  const normalized = normalizeToolName(trimmed);
+  if (allowedToolNames.has(normalized)) {
+    return normalized;
+  }
+  const lowered = normalized.toLowerCase();
+  let caseInsensitiveMatch: string | undefined;
+  for (const candidate of allowedToolNames) {
+    if (candidate.toLowerCase() !== lowered) {
+      continue;
+    }
+    if (caseInsensitiveMatch && caseInsensitiveMatch !== candidate) {
+      return undefined;
+    }
+    caseInsensitiveMatch = candidate;
+  }
+  return caseInsensitiveMatch;
+}
+
+function sanitizeToolChoiceOverride(
+  extraParams: Record<string, unknown> | undefined,
+  allowedToolNames?: Set<string>,
+): Record<string, unknown> | undefined {
+  if (!extraParams || !isToolChoiceOverride(extraParams.toolChoice)) {
+    return extraParams;
+  }
+  if (!allowedToolNames || allowedToolNames.size === 0) {
+    if (extraParams.toolChoice === "none") {
+      return extraParams;
+    }
+    return {
+      ...extraParams,
+      toolChoice: "none",
+    };
+  }
+  const toolChoice = extraParams.toolChoice;
+  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") {
+    return extraParams;
+  }
+  const resolvedName = resolveAllowedToolChoiceName(toolChoice.function.name, allowedToolNames);
+  if (!resolvedName) {
+    return {
+      ...extraParams,
+      toolChoice: "auto",
+    };
+  }
+  if (resolvedName === toolChoice.function.name) {
+    return extraParams;
+  }
+  return {
+    ...extraParams,
+    toolChoice: {
+      type: "function",
+      function: {
+        name: resolvedName,
+      },
+    },
+  };
+}
 
 function resolveSupportedTransport(value: unknown): SupportedTransport | undefined {
   return value === "sse" || value === "websocket" || value === "auto" ? value : undefined;
@@ -201,6 +295,9 @@ function createStreamFnWithExtraParams(
   if (typeof extraParams.maxTokens === "number") {
     streamParams.maxTokens = extraParams.maxTokens;
   }
+  if (isToolChoiceOverride(extraParams.toolChoice)) {
+    streamParams.toolChoice = extraParams.toolChoice;
+  }
   const transport = resolveSupportedTransport(extraParams.transport);
   if (transport) {
     streamParams.transport = transport;
@@ -285,6 +382,7 @@ type ApplyExtraParamsContext = {
   thinkingLevel?: ThinkLevel;
   model?: ProviderRuntimeModel;
   effectiveExtraParams: Record<string, unknown>;
+  sanitizedExtraParams: Record<string, unknown>;
   resolvedExtraParams?: Record<string, unknown>;
   override?: Record<string, unknown>;
 };
@@ -300,7 +398,7 @@ function applyPrePluginStreamWrappers(ctx: ApplyExtraParamsContext): void {
 
   const wrappedStreamFn = createStreamFnWithExtraParams(
     ctx.agent.streamFn,
-    ctx.effectiveExtraParams,
+    ctx.sanitizedExtraParams,
     ctx.provider,
   );
 
@@ -309,7 +407,11 @@ function applyPrePluginStreamWrappers(ctx: ApplyExtraParamsContext): void {
     ctx.agent.streamFn = wrappedStreamFn;
   }
 
-  const anthropicBetas = resolveAnthropicBetas(ctx.effectiveExtraParams, ctx.provider, ctx.modelId);
+  const anthropicBetas = resolveAnthropicBetas(
+    ctx.sanitizedExtraParams,
+    ctx.provider,
+    ctx.modelId,
+  );
   if (anthropicBetas?.length) {
     log.debug(
       `applying Anthropic beta header for ${ctx.provider}/${ctx.modelId}: ${anthropicBetas.join(",")}`,
@@ -347,7 +449,7 @@ function applyPostPluginStreamWrappers(
     // actually handled the stream function. This mainly covers tests and
     // disabled plugins for the native Moonshot provider.
     const thinkingType = resolveMoonshotThinkingType({
-      configuredThinking: ctx.effectiveExtraParams?.thinking,
+      configuredThinking: ctx.sanitizedExtraParams?.thinking,
       thinkingLevel: ctx.thinkingLevel,
     });
     ctx.agent.streamFn = createMoonshotThinkingWrapper(ctx.agent.streamFn, thinkingType);
@@ -388,7 +490,7 @@ function applyPostPluginStreamWrappers(
     ctx.agent.streamFn = createOpenAIFastModeWrapper(ctx.agent.streamFn);
   }
 
-  const openAIServiceTier = resolveOpenAIServiceTier(ctx.effectiveExtraParams);
+  const openAIServiceTier = resolveOpenAIServiceTier(ctx.sanitizedExtraParams);
   if (openAIServiceTier) {
     log.debug(
       `applying OpenAI service_tier=${openAIServiceTier} for ${ctx.provider}/${ctx.modelId}`,
@@ -401,7 +503,7 @@ function applyPostPluginStreamWrappers(
   // server-side compaction for compatible OpenAI Responses payloads.
   ctx.agent.streamFn = createOpenAIResponsesContextManagementWrapper(
     ctx.agent.streamFn,
-    ctx.effectiveExtraParams,
+    ctx.sanitizedExtraParams,
   );
 
   const rawParallelToolCalls = resolveAliasedParamValue(
@@ -441,6 +543,7 @@ export function applyExtraParamsToAgent(
   agentId?: string,
   workspaceDir?: string,
   model?: ProviderRuntimeModel,
+  allowedToolNames?: Set<string>,
 ): { effectiveExtraParams: Record<string, unknown> } {
   const resolvedExtraParams = resolveExtraParams({
     cfg,
@@ -463,6 +566,8 @@ export function applyExtraParamsToAgent(
     agentId,
     resolvedExtraParams,
   });
+  const sanitizedExtraParams =
+    sanitizeToolChoiceOverride(effectiveExtraParams, allowedToolNames) ?? effectiveExtraParams;
 
   const wrapperContext: ApplyExtraParamsContext = {
     agent,
@@ -473,6 +578,7 @@ export function applyExtraParamsToAgent(
     thinkingLevel,
     model,
     effectiveExtraParams,
+    sanitizedExtraParams,
     resolvedExtraParams,
     override,
   };
@@ -486,7 +592,7 @@ export function applyExtraParamsToAgent(
       config: cfg,
       provider,
       modelId,
-      extraParams: effectiveExtraParams,
+      extraParams: sanitizedExtraParams,
       thinkingLevel,
       model,
       streamFn: providerStreamBase,
