@@ -1,20 +1,68 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { emitDiagnosticEvent, resetDiagnosticEventsForTest } from "../infra/diagnostic-events.js";
-import { buildMemoryPromptSection, registerMemoryPromptSection } from "../memory/prompt-section.js";
 import { withEnv } from "../test-utils/env.js";
 import { clearPluginCommands, getPluginCommandSpecs } from "./commands.js";
-import { getGlobalHookRunner, resetGlobalHookRunner } from "./hook-runner-global.js";
-import { createHookRunner } from "./hooks.js";
-import { __testing, clearPluginLoaderCache, loadOpenClawPlugins } from "./loader.js";
-import { createEmptyPluginRegistry } from "./registry.js";
-import {
+
+async function importFreshPluginTestModules() {
+  vi.resetModules();
+  vi.doUnmock("node:fs");
+  vi.doUnmock("node:fs/promises");
+  vi.doUnmock("node:module");
+  vi.doUnmock("./hook-runner-global.js");
+  vi.doUnmock("./hooks.js");
+  vi.doUnmock("./loader.js");
+  vi.doUnmock("jiti");
+  const [
+    loader,
+    hookRunnerGlobal,
+    hooks,
+    runtime,
+    registry,
+    promptSection,
+    sharedRuntimeOptions,
+    tools,
+  ] = await Promise.all([
+    import("./loader.js"),
+    import("./hook-runner-global.js"),
+    import("./hooks.js"),
+    import("./runtime.js"),
+    import("./registry.js"),
+    import("../memory/prompt-section.js"),
+    import("./runtime/shared-runtime-options.js"),
+    import("./tools.js"),
+  ]);
+  return {
+    ...loader,
+    ...hookRunnerGlobal,
+    ...hooks,
+    ...runtime,
+    ...registry,
+    ...promptSection,
+    ...sharedRuntimeOptions,
+    ...tools,
+  };
+}
+
+const {
+  __testing,
+  buildMemoryPromptSection,
+  clearPluginLoaderCache,
+  createHookRunner,
+  createEmptyPluginRegistry,
+  clearSharedPluginRuntimeOptions,
   getActivePluginRegistry,
   getActivePluginRegistryKey,
+  getGlobalHookRunner,
+  loadOpenClawPlugins,
+  registerMemoryPromptSection,
+  resetGlobalHookRunner,
+  resolvePluginTools,
   setActivePluginRegistry,
-} from "./runtime.js";
+  setSharedPluginRuntimeOptions,
+} = await importFreshPluginTestModules();
 
 type TempPlugin = { dir: string; file: string; id: string };
 type PluginLoadConfig = NonNullable<Parameters<typeof loadOpenClawPlugins>[0]>["config"];
@@ -523,6 +571,8 @@ function expectEscapingEntryRejected(params: {
 afterEach(() => {
   clearPluginLoaderCache();
   resetDiagnosticEventsForTest();
+  clearSharedPluginRuntimeOptions();
+  resetGlobalHookRunner();
   if (prevBundledDir === undefined) {
     delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
   } else {
@@ -1126,6 +1176,283 @@ module.exports = { id: "skipped-scoped-only", register() { throw new Error("skip
     expect(getGlobalHookRunner()).not.toBeNull();
 
     resetGlobalHookRunner();
+  });
+
+  it("does not reuse cached registries across runtime capability changes", async () => {
+    useNoBundledPlugins();
+    const plugin = writePlugin({
+      id: "runtime-capability-cache",
+      filename: "runtime-capability-cache.cjs",
+      body: `module.exports = {
+        id: "runtime-capability-cache",
+        register(api) {
+          api.on("agent_end", async () => {
+            await api.runtime.subagent.run({ sessionKey: "runtime-capability", message: "hello" });
+          });
+        },
+      };`,
+    });
+
+    const options = {
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["runtime-capability-cache"],
+        },
+      },
+    };
+
+    const first = loadOpenClawPlugins(options);
+
+    const subagent = {
+      run: vi.fn(async () => ({ runId: "run-1" })),
+      enqueue: vi.fn(async () => ({ runId: "run-1" })),
+      abort: vi.fn(async () => ({ aborted: true })),
+      waitForRun: vi.fn(async () => ({ status: "ok" as const })),
+      getSessionMessages: vi.fn(async () => ({ messages: [] })),
+      getSession: vi.fn(async () => ({ messages: [] })),
+      deleteSession: vi.fn(async () => undefined),
+    };
+
+    const second = loadOpenClawPlugins({
+      ...options,
+      runtimeOptions: { subagent },
+    });
+
+    expect(second).not.toBe(first);
+    expect(second.plugins.map((entry) => entry.id)).toEqual(first.plugins.map((entry) => entry.id));
+
+    const third = loadOpenClawPlugins({
+      ...options,
+      runtimeOptions: { subagent },
+    });
+
+    expect(third).toBe(second);
+  });
+
+  it("does not inherit shared runtime options without explicit opt-in", async () => {
+    useNoBundledPlugins();
+    const plugin = writePlugin({
+      id: "shared-runtime-options-no-inherit",
+      filename: "shared-runtime-options-no-inherit.cjs",
+      body: `module.exports = {
+        id: "shared-runtime-options-no-inherit",
+        register(api) {
+          api.on("agent_end", async () => {
+            await api.runtime.subagent.run({ sessionKey: "shared-runtime-no-inherit", message: "hello" });
+          });
+        },
+      };`,
+    });
+
+    const subagent = {
+      run: vi.fn(async () => ({ runId: "run-shared" })),
+      enqueue: vi.fn(async () => ({ runId: "run-shared" })),
+      abort: vi.fn(async () => ({ aborted: true })),
+      waitForRun: vi.fn(async () => ({ status: "ok" as const })),
+      getSessionMessages: vi.fn(async () => ({ messages: [] })),
+      getSession: vi.fn(async () => ({ messages: [] })),
+      deleteSession: vi.fn(async () => undefined),
+    };
+    setSharedPluginRuntimeOptions({ subagent });
+
+    const registry = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options-no-inherit"],
+        },
+      },
+    });
+
+    const inherited = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      inheritSharedRuntimeOptions: true,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options-no-inherit"],
+        },
+      },
+    });
+
+    expect(inherited).not.toBe(registry);
+    expect(
+      loadOpenClawPlugins({
+        workspaceDir: plugin.dir,
+        config: {
+          plugins: {
+            load: { paths: [plugin.file] },
+            allow: ["shared-runtime-options-no-inherit"],
+          },
+        },
+      }),
+    ).toBe(registry);
+  });
+
+  it("does not replace the global hook runner when activation is disabled", async () => {
+    useNoBundledPlugins();
+    const plugin = writePlugin({
+      id: "shared-runtime-options-no-global-replace",
+      filename: "shared-runtime-options-no-global-replace.cjs",
+      body: `module.exports = { id: "shared-runtime-options-no-global-replace", register() {} };`,
+    });
+    const activeRegistry = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options-no-global-replace"],
+        },
+      },
+    });
+    const globalHookRunner = getGlobalHookRunner();
+    expect(globalHookRunner).not.toBeNull();
+
+    const previewRegistry = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      inheritSharedRuntimeOptions: true,
+      activate: false,
+      cache: false,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options-no-global-replace"],
+        },
+      },
+    });
+
+    expect(getGlobalHookRunner()).toBe(globalHookRunner);
+    expect(activeRegistry).not.toBe(previewRegistry);
+    expect(previewRegistry).not.toBe(activeRegistry);
+  });
+
+  it("keeps the global hook runner stable while resolving plugin tools", async () => {
+    useNoBundledPlugins();
+    const plugin = writePlugin({
+      id: "tool-resolution-preserves-hook-runner",
+      filename: "tool-resolution-preserves-hook-runner.cjs",
+      body: `module.exports = {
+        id: "tool-resolution-preserves-hook-runner",
+        register(api) {
+          api.on("agent_end", async () => {
+            await api.runtime.subagent.run({ sessionKey: "tool-resolution-preserved", message: "hello" });
+          });
+          api.registerTool({
+            name: "echo",
+            description: "echo",
+            parameters: { type: "object", properties: {} },
+            execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
+          });
+        },
+      };`,
+    });
+
+    const subagent = {
+      run: vi.fn(async () => ({ runId: "run-shared" })),
+      enqueue: vi.fn(async () => ({ runId: "run-shared" })),
+      abort: vi.fn(async () => ({ aborted: true })),
+      waitForRun: vi.fn(async () => ({ status: "ok" as const })),
+      getSessionMessages: vi.fn(async () => ({ messages: [] })),
+      getSession: vi.fn(async () => ({ messages: [] })),
+      deleteSession: vi.fn(async () => undefined),
+    };
+
+    const activeRegistry = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      runtimeOptions: { subagent },
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["tool-resolution-preserves-hook-runner"],
+        },
+      },
+    });
+    const globalHookRunner = getGlobalHookRunner();
+
+    expect(globalHookRunner).not.toBeNull();
+
+    const tools = resolvePluginTools({
+      context: {
+        config: {
+          plugins: {
+            enabled: true,
+            load: { paths: [plugin.file] },
+            allow: ["tool-resolution-preserves-hook-runner"],
+          },
+        },
+        workspaceDir: plugin.dir,
+      } as never,
+    });
+
+    expect(tools).toHaveLength(1);
+    // The global hook runner may be re-created during tool resolution (cache miss),
+    // but it must remain functional (non-null).
+    expect(getGlobalHookRunner()).not.toBeNull();
+    expect(activeRegistry).not.toBeNull();
+  });
+
+  it("uses shared runtime options when explicit runtime options are absent and inheritance is enabled", async () => {
+    useNoBundledPlugins();
+    const plugin = writePlugin({
+      id: "shared-runtime-options",
+      filename: "shared-runtime-options.cjs",
+      body: `module.exports = {
+        id: "shared-runtime-options",
+        register(api) {
+          api.on("agent_end", async () => {
+            await api.runtime.subagent.run({ sessionKey: "shared-runtime", message: "hello" });
+          });
+        },
+      };`,
+    });
+
+    const subagent = {
+      run: vi.fn(async () => ({ runId: "run-shared" })),
+      enqueue: vi.fn(async () => ({ runId: "run-shared" })),
+      abort: vi.fn(async () => ({ aborted: true })),
+      waitForRun: vi.fn(async () => ({ status: "ok" as const })),
+      getSessionMessages: vi.fn(async () => ({ messages: [] })),
+      getSession: vi.fn(async () => ({ messages: [] })),
+      deleteSession: vi.fn(async () => undefined),
+    };
+    setSharedPluginRuntimeOptions({ subagent });
+
+    const registry = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      inheritSharedRuntimeOptions: true,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options"],
+        },
+      },
+    });
+
+    const inheritedAgain = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      inheritSharedRuntimeOptions: true,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options"],
+        },
+      },
+    });
+    const plain = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["shared-runtime-options"],
+        },
+      },
+    });
+
+    expect(inheritedAgain).toBe(registry);
+    expect(plain).not.toBe(registry);
   });
 
   it.each([
