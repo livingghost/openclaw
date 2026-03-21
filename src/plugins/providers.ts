@@ -168,6 +168,7 @@ export function resolvePluginProviders(params: {
     onlyPluginIds: params.onlyPluginIds,
     cache: params.cache ?? false,
     activate: params.activate ?? false,
+    providerOnly: !(params.activate ?? false),
     logger: createPluginLoaderLogger(log),
   });
 
