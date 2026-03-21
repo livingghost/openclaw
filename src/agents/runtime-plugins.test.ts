@@ -43,12 +43,13 @@ describe("ensureRuntimePluginsLoaded", () => {
       allowGatewaySubagentBinding: true,
     });
 
-    expect(hoisted.loadOpenClawPlugins).toHaveBeenCalledWith({
-      config: {} as never,
-      workspaceDir: "/tmp/workspace",
-      runtimeOptions: {
-        allowGatewaySubagentBinding: true,
-      },
-    });
+    expect(hoisted.loadOpenClawPlugins).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeOptions: {
+          allowGatewaySubagentBinding: true,
+        },
+        inheritSharedRuntimeOptions: true,
+      }),
+    );
   });
 });

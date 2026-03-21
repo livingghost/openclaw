@@ -1,6 +1,11 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { PluginRegistry } from "../plugins/registry.js";
 import type { PluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
+import {
+  clearSharedPluginRuntimeOptions,
+  getSharedPluginRuntimeOptions,
+  setSharedPluginRuntimeOptions,
+} from "../plugins/runtime/shared-runtime-options.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import type { PluginDiagnostic } from "../plugins/types.js";
 import type { GatewayRequestContext, GatewayRequestOptions } from "./server-methods/types.js";
@@ -27,6 +32,7 @@ vi.mock("../plugins/channel-plugin-ids.js", () => ({
 
 vi.mock("../channels/plugins/binding-registry.js", () => ({
   primeConfiguredBindingRegistry,
+  resolveConfiguredBindingRecord: vi.fn(() => undefined),
 }));
 
 vi.mock("./server-methods.js", () => ({
@@ -34,14 +40,15 @@ vi.mock("./server-methods.js", () => ({
 }));
 
 vi.mock("../channels/registry.js", () => ({
-  CHAT_CHANNEL_ORDER: [],
-  CHANNEL_IDS: [],
+  CHAT_CHANNEL_ORDER: ["telegram", "discord", "slack"],
+  CHANNEL_IDS: ["telegram", "discord", "slack"],
   listChatChannels: () => [],
   listChatChannelAliases: () => [],
   getChatChannelMeta: () => null,
   normalizeChatChannelId: () => null,
   normalizeChannelId: () => null,
-  normalizeAnyChannelId: () => null,
+  normalizeAnyChannelId: (raw?: string | null) =>
+    typeof raw === "string" && raw.trim().length > 0 ? raw.trim().toLowerCase() : null,
   formatChannelPrimerLine: () => "",
   formatChannelSelectionLine: () => "",
 }));
@@ -97,11 +104,33 @@ function getLastDispatchedClientScopes(): string[] {
   return Array.isArray(scopes) ? scopes : [];
 }
 
+function getLastDispatchedRequest():
+  | { method: string; params?: Record<string, unknown> }
+  | undefined {
+  const call = handleGatewayRequest.mock.calls.at(-1)?.[0];
+  const req = call?.req;
+  if (!req) {
+    return undefined;
+  }
+  const params =
+    "params" in req && req.params != null && typeof req.params === "object"
+      ? (req.params as Record<string, unknown>)
+      : undefined;
+  return {
+    method: req.method,
+    params,
+  };
+}
+
 async function loadTestModules() {
   serverPluginsModule = await import("./server-plugins.js");
   runtimeModule = await import("../plugins/runtime/index.js");
   gatewayRequestScopeModule = await import("../plugins/runtime/gateway-request-scope.js");
   methodScopesModule = await import("./method-scopes.js");
+}
+
+async function importServerPluginsModule(): Promise<ServerPluginsModule> {
+  return import("./server-plugins.js");
 }
 
 async function createSubagentRuntime(
@@ -150,10 +179,21 @@ beforeEach(() => {
   handleGatewayRequest.mockImplementation(async (opts: HandleGatewayRequestOptions) => {
     switch (opts.req.method) {
       case "agent":
+      case "agent.enqueue":
         opts.respond(true, { runId: "run-1" });
         return;
       case "agent.wait":
-        opts.respond(true, { status: "ok" });
+        opts.respond(true, {
+          status: "ok",
+          stopReason: "tool_calls",
+          pendingToolCalls: [
+            {
+              id: "call-1",
+              name: "emit_structured_result",
+              arguments: '{"entries":[]}',
+            },
+          ],
+        });
         return;
       case "sessions.get":
         opts.respond(true, { messages: [] });
@@ -169,6 +209,8 @@ beforeEach(() => {
 
 afterEach(() => {
   runtimeModule.clearGatewaySubagentRuntime();
+  clearSharedPluginRuntimeOptions();
+  vi.resetModules();
 });
 
 describe("loadGatewayPlugins", () => {
@@ -444,8 +486,8 @@ describe("loadGatewayPlugins", () => {
     expect(getLastDispatchedClientScopes()).not.toContain("operator.admin");
   });
 
-  test("allows fallback session reads with synthetic write scope", async () => {
-    const serverPlugins = serverPluginsModule;
+  test("allows fallback session reads with synthetic read scope", async () => {
+    const serverPlugins = await importServerPluginsModule();
     const runtime = await createSubagentRuntime(serverPlugins);
     serverPlugins.setFallbackGatewayContext(createTestContext("synthetic-session-read"));
 
@@ -470,7 +512,7 @@ describe("loadGatewayPlugins", () => {
       messages: [{ id: "m-1" }],
     });
 
-    expect(getLastDispatchedClientScopes()).toEqual(["operator.write"]);
+    expect(getLastDispatchedClientScopes()).toEqual(["operator.read"]);
     expect(getLastDispatchedClientScopes()).not.toContain("operator.admin");
   });
 
@@ -568,6 +610,81 @@ describe("loadGatewayPlugins", () => {
     expect(log.error).not.toHaveBeenCalled();
     expect(log.info).not.toHaveBeenCalled();
   });
+
+  test("publishes shared runtime options for later plugin reloads", async () => {
+    const { loadGatewayPlugins } = await importServerPluginsModule();
+    loadOpenClawPlugins.mockReturnValue(createRegistry([]));
+
+    loadGatewayPlugins({
+      cfg: {},
+      workspaceDir: "/tmp",
+      log: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+      coreGatewayHandlers: {},
+      baseMethods: [],
+    });
+
+    expect(typeof getSharedPluginRuntimeOptions()?.subagent?.run).toBe("function");
+  });
+
+  test("rolls back shared runtime options when plugin loading fails", async () => {
+    const { loadGatewayPlugins } = await importServerPluginsModule();
+    loadOpenClawPlugins.mockImplementation(() => {
+      throw new Error("plugin load failed");
+    });
+
+    expect(() =>
+      loadGatewayPlugins({
+        cfg: {},
+        workspaceDir: "/tmp",
+        log: {
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+        },
+        coreGatewayHandlers: {},
+        baseMethods: [],
+      }),
+    ).toThrow("plugin load failed");
+
+    expect(getSharedPluginRuntimeOptions()).toBeUndefined();
+  });
+
+  test("restores previous shared runtime options when plugin loading fails", async () => {
+    const { loadGatewayPlugins } = await importServerPluginsModule();
+    const previousRuntime = {
+      subagent: {
+        run: vi.fn(),
+      },
+    } as unknown as NonNullable<ReturnType<typeof getSharedPluginRuntimeOptions>>;
+    setSharedPluginRuntimeOptions(previousRuntime);
+    loadOpenClawPlugins.mockImplementation(() => {
+      throw new Error("plugin load failed");
+    });
+
+    expect(() =>
+      loadGatewayPlugins({
+        cfg: {},
+        workspaceDir: "/tmp",
+        log: {
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+        },
+        coreGatewayHandlers: {},
+        baseMethods: [],
+      }),
+    ).toThrow("plugin load failed");
+
+    expect(getSharedPluginRuntimeOptions()).toBe(previousRuntime);
+  });
+
   test("shares fallback context across module reloads for existing runtimes", async () => {
     const first = serverPluginsModule;
     const runtime = await createSubagentRuntime(first);
@@ -642,5 +759,158 @@ describe("loadGatewayPlugins", () => {
 
     await runtime.run({ sessionKey: "s-5", message: "prefer resolver" });
     expect(getLastDispatchedContext()).toBe(freshContext);
+  });
+
+  test("mints idempotency keys for plugin subagent requests when absent", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = await createSubagentRuntime(serverPlugins);
+    serverPlugins.setFallbackGatewayContext(createTestContext("idempotency-generated"));
+
+    await runtime.run({ sessionKey: "s-run", message: "hello" });
+    const runRequest = getLastDispatchedRequest();
+    expect(runRequest?.method).toBe("agent");
+    expect(runRequest?.params).toMatchObject({
+      sessionKey: "s-run",
+      message: "hello",
+      deliver: false,
+    });
+    expect(runRequest?.params?.idempotencyKey).toEqual(
+      expect.stringMatching(/^plugin-subagent:agent:s-run:/),
+    );
+
+    await runtime.enqueue({ sessionKey: "s-enqueue", message: "queued" });
+    const enqueueRequest = getLastDispatchedRequest();
+    expect(enqueueRequest?.method).toBe("agent.enqueue");
+    expect(enqueueRequest?.params).toMatchObject({
+      sessionKey: "s-enqueue",
+      message: "queued",
+      deliver: false,
+    });
+    expect(enqueueRequest?.params?.idempotencyKey).toEqual(
+      expect.stringMatching(/^plugin-subagent:agent\.enqueue:s-enqueue:/),
+    );
+  });
+
+  test("preserves caller-provided idempotency keys for plugin subagent requests", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = await createSubagentRuntime(serverPlugins);
+    serverPlugins.setFallbackGatewayContext(createTestContext("idempotency-preserved"));
+
+    await runtime.run({
+      sessionKey: "s-run",
+      message: "hello",
+      idempotencyKey: "plugin-run-idem",
+    });
+    expect(getLastDispatchedRequest()?.params?.idempotencyKey).toBe("plugin-run-idem");
+
+    await runtime.enqueue({
+      sessionKey: "s-enqueue",
+      message: "queued",
+      idempotencyKey: "plugin-enqueue-idem",
+    });
+    expect(getLastDispatchedRequest()?.params?.idempotencyKey).toBe("plugin-enqueue-idem");
+  });
+
+  test("does not forward unsupported tool-control fields to gateway agent methods", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = await createSubagentRuntime(serverPlugins);
+    serverPlugins.setFallbackGatewayContext(createTestContext("structured-output"));
+
+    // Pass unsupported fields via cast — these are intentionally not in SubagentRunParams
+    // but we verify they are not forwarded to the gateway.
+    await runtime.run({
+      sessionKey: "s-structured",
+      message: "extract memories",
+      disableTools: true,
+      clientTools: [
+        {
+          type: "function",
+          function: {
+            name: "emit_structured_result",
+            description: "test",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
+      streamParams: { temperature: 0.5 },
+    } as never);
+
+    const dispatched = getLastDispatchedRequest();
+    expect(dispatched?.method).toBe("agent");
+    expect(dispatched?.params?.clientTools).toBeUndefined();
+    expect(dispatched?.params?.disableTools).toBeUndefined();
+    expect(dispatched?.params?.streamParams).toBeUndefined();
+  });
+
+  test("sanitized idempotency key is not overwritten by raw caller value", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = await createSubagentRuntime(serverPlugins);
+    serverPlugins.setFallbackGatewayContext(createTestContext("idempotency-sanitized"));
+
+    // Whitespace-padded key should be trimmed by resolvePluginSubagentIdempotencyKey
+    await runtime.run({
+      sessionKey: "s-trim",
+      message: "check trimming",
+      idempotencyKey: "  trimmed-key  ",
+    });
+    expect(getLastDispatchedRequest()?.params?.idempotencyKey).toBe("trimmed-key");
+
+    await runtime.enqueue({
+      sessionKey: "s-trim-enqueue",
+      message: "check trimming enqueue",
+      idempotencyKey: "  trimmed-enqueue-key  ",
+    });
+    expect(getLastDispatchedRequest()?.params?.idempotencyKey).toBe("trimmed-enqueue-key");
+  });
+
+  test("enqueue does not forward unsupported tool-control fields", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = await createSubagentRuntime(serverPlugins);
+    serverPlugins.setFallbackGatewayContext(createTestContext("enqueue-tool-control"));
+
+    await runtime.enqueue({
+      sessionKey: "s-enqueue-tools",
+      message: "extract memories",
+      disableTools: true,
+      clientTools: [
+        {
+          type: "function",
+          function: {
+            name: "emit_structured_result",
+            description: "test",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
+      streamParams: { temperature: 0.5 },
+    } as never);
+
+    const dispatched = getLastDispatchedRequest();
+    expect(dispatched?.method).toBe("agent.enqueue");
+    expect(dispatched?.params?.clientTools).toBeUndefined();
+    expect(dispatched?.params?.disableTools).toBeUndefined();
+    expect(dispatched?.params?.streamParams).toBeUndefined();
+  });
+
+  test("returns pending tool calls from gateway agent.wait", async () => {
+    const serverPlugins = await importServerPluginsModule();
+    const runtime = await createSubagentRuntime(serverPlugins);
+
+    const result = await runtime.waitForRun({
+      runId: "run-1",
+      timeoutMs: 1_000,
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      stopReason: "tool_calls",
+      pendingToolCalls: [
+        {
+          id: "call-1",
+          name: "emit_structured_result",
+          arguments: '{"entries":[]}',
+        },
+      ],
+    });
   });
 });
