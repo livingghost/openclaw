@@ -1427,8 +1427,22 @@ export function listSessionsFromStore(params: {
 }): SessionsListResult {
   const { cfg, storePath, store, opts } = params;
   const normalizedOpts = normalizeSessionsListOptions(opts);
+  let filteredEntries = filterSessionListEntries(store, normalizedOpts);
 
-  let sessions = filterSessionListEntries(store, normalizedOpts).map(([key, entry]) =>
+  if (!normalizedOpts.search) {
+    filteredEntries = filteredEntries.toSorted(
+      ([, a], [, b]) => (b?.updatedAt ?? 0) - (a?.updatedAt ?? 0),
+    );
+    if (normalizedOpts.activeMinutes !== undefined) {
+      const cutoff = normalizedOpts.now - normalizedOpts.activeMinutes * 60_000;
+      filteredEntries = filteredEntries.filter(([, entry]) => (entry?.updatedAt ?? 0) >= cutoff);
+    }
+    if (normalizedOpts.limit !== undefined) {
+      filteredEntries = filteredEntries.slice(0, normalizedOpts.limit);
+    }
+  }
+
+  let sessions = filteredEntries.map(([key, entry]) =>
     buildGatewaySessionRow({
       cfg,
       storePath,
