@@ -41348,6 +41348,38 @@
       "hasChildren": false
     },
     {
+      "path": "gateway.sessionsList",
+      "kind": "core",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "network",
+        "storage"
+      ],
+      "label": "Gateway Sessions List",
+      "help": "Gateway sessions.list read-path tuning for transcript-derived metadata fallbacks. Leave defaults alone unless large session inventories or large transcripts are causing sessions.list timeouts.",
+      "hasChildren": true
+    },
+    {
+      "path": "gateway.sessionsList.fallbackConcurrency",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "network",
+        "performance",
+        "reliability",
+        "storage"
+      ],
+      "label": "Gateway Sessions List Fallback Concurrency",
+      "help": "Maximum number of transcript usage fallback reads allowed in parallel during gateway sessions.list. Default: 1, which preserves the current serial behavior; raise this only when host I/O and CPU headroom are available.",
+      "hasChildren": false
+    },
+    {
       "path": "gateway.tailscale",
       "kind": "core",
       "type": "object",
