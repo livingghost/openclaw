@@ -1388,6 +1388,7 @@ export type PluginHookName =
   | "after_compaction"
   | "before_reset"
   | "inbound_claim"
+  | "inbound_dispatch_gate"
   | "message_received"
   | "message_sending"
   | "message_sent"
@@ -1415,6 +1416,7 @@ export const PLUGIN_HOOK_NAMES = [
   "after_compaction",
   "before_reset",
   "inbound_claim",
+  "inbound_dispatch_gate",
   "message_received",
   "message_sending",
   "message_sent",
@@ -1651,6 +1653,11 @@ export type PluginHookInboundClaimEvent = {
 };
 
 export type PluginHookInboundClaimResult = {
+  handled: boolean;
+};
+
+// inbound_dispatch_gate hook — same event/context as inbound_claim
+export type PluginHookInboundDispatchGateResult = {
   handled: boolean;
 };
 
@@ -1914,6 +1921,13 @@ export type PluginHookHandlerMap = {
     event: PluginHookInboundClaimEvent,
     ctx: PluginHookInboundClaimContext,
   ) => Promise<PluginHookInboundClaimResult | void> | PluginHookInboundClaimResult | void;
+  inbound_dispatch_gate: (
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+  ) =>
+    | Promise<PluginHookInboundDispatchGateResult | void>
+    | PluginHookInboundDispatchGateResult
+    | void;
   message_received: (
     event: PluginHookMessageReceivedEvent,
     ctx: PluginHookMessageContext,

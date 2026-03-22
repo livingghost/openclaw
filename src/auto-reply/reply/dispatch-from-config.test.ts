@@ -41,6 +41,7 @@ const hookMocks = vi.hoisted(() => ({
     runInboundClaimForPluginOutcome: vi.fn<() => Promise<PluginTargetedInboundClaimOutcome>>(
       async () => ({ status: "no_handler" as const }),
     ),
+    runInboundDispatchGate: vi.fn(async () => undefined),
     runMessageReceived: vi.fn(async () => {}),
   },
 }));
@@ -309,6 +310,8 @@ describe("dispatchReplyFromConfig", () => {
     hookMocks.runner.runInboundClaimForPluginOutcome.mockResolvedValue({
       status: "no_handler",
     });
+    hookMocks.runner.runInboundDispatchGate.mockClear();
+    hookMocks.runner.runInboundDispatchGate.mockResolvedValue(undefined);
     hookMocks.runner.runMessageReceived.mockClear();
     hookMocks.registry.plugins = [];
     internalHookMocks.createInternalHookEvent.mockClear();
@@ -2648,5 +2651,98 @@ describe("dispatchReplyFromConfig", () => {
     await dispatchReplyFromConfig({ ctx, cfg: emptyConfig, dispatcher, replyResolver });
     expect(blockReplySentTexts).not.toContain("Reasoning:\n_thinking..._");
     expect(blockReplySentTexts).toContain("The answer is 42");
+  });
+
+  // ---------------------------------------------------------------------------
+  // inbound_dispatch_gate
+  // ---------------------------------------------------------------------------
+
+  it("skips default agent dispatch when inbound_dispatch_gate returns handled:true", async () => {
+    setNoAbort();
+    hookMocks.runner.runInboundDispatchGate.mockResolvedValue({ handled: true });
+    hookMocks.runner.hasHooks.mockImplementation(
+      ((hookName?: string) => hookName === "message_received") as () => boolean,
+    );
+    const cfg = emptyConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      OriginatingTo: "telegram:123",
+      Body: "hello gate",
+    });
+    const replyResolver = vi.fn(async () => ({ text: "reply" }) satisfies ReplyPayload);
+
+    const result = await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(result).toEqual({ queuedFinal: false, counts: { tool: 0, block: 0, final: 0 } });
+    expect(replyResolver).not.toHaveBeenCalled();
+    expect(hookMocks.runner.runMessageReceived).toHaveBeenCalled();
+  });
+
+  it("proceeds with normal dispatch when inbound_dispatch_gate returns handled:false", async () => {
+    setNoAbort();
+    hookMocks.runner.runInboundDispatchGate.mockResolvedValue({ handled: false });
+    const cfg = emptyConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      OriginatingTo: "telegram:123",
+      Body: "hello gate",
+    });
+    const replyResolver = vi.fn(async () => ({ text: "reply" }) satisfies ReplyPayload);
+
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(replyResolver).toHaveBeenCalled();
+  });
+
+  it("proceeds with normal dispatch when no inbound_dispatch_gate handler is registered", async () => {
+    setNoAbort();
+    hookMocks.runner.runInboundDispatchGate.mockResolvedValue(undefined);
+    const cfg = emptyConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      OriginatingTo: "telegram:123",
+      Body: "hello gate",
+    });
+    const replyResolver = vi.fn(async () => ({ text: "reply" }) satisfies ReplyPayload);
+
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(replyResolver).toHaveBeenCalled();
+  });
+
+  it("fires message_received hooks even when inbound_dispatch_gate claims the message", async () => {
+    setNoAbort();
+    hookMocks.runner.runInboundDispatchGate.mockResolvedValue({ handled: true });
+    hookMocks.runner.hasHooks.mockImplementation(
+      ((hookName?: string) => hookName === "message_received") as () => boolean,
+    );
+    const cfg = emptyConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      OriginatingTo: "telegram:456",
+      SessionKey: "agent:main:telegram:456",
+    });
+    const replyResolver = vi.fn(async () => ({ text: "reply" }) satisfies ReplyPayload);
+
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    // Agent dispatch was skipped
+    expect(replyResolver).not.toHaveBeenCalled();
+    // But message_received observation hooks still fired
+    expect(hookMocks.runner.runMessageReceived).toHaveBeenCalledTimes(1);
+    // Internal hooks also fired
+    expect(internalHookMocks.createInternalHookEvent).toHaveBeenCalled();
   });
 });

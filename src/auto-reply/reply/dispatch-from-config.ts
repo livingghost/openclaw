@@ -391,6 +391,41 @@ export async function dispatchReplyFromConfig(params: {
     }
   }
 
+  // Allow plugins to claim inbound messages and skip default dispatch.
+  if (hookRunner?.runInboundDispatchGate) {
+    const gateResult = await hookRunner.runInboundDispatchGate(
+      inboundClaimEvent,
+      inboundClaimContext,
+    );
+    if (gateResult?.handled) {
+      // Plugin claimed the message — skip default agent dispatch.
+      // Observation hooks (message_received + internal) still fire.
+      if (hookRunner?.hasHooks("message_received")) {
+        fireAndForgetHook(
+          hookRunner.runMessageReceived(
+            toPluginMessageReceivedEvent(hookContext),
+            toPluginMessageContext(hookContext),
+          ),
+          "dispatch-from-config: message_received plugin hook failed",
+        );
+      }
+      if (sessionKey) {
+        fireAndForgetHook(
+          triggerInternalHook(
+            createInternalHookEvent("message", "received", sessionKey, {
+              ...toInternalMessageReceivedContext(hookContext),
+              timestamp,
+            }),
+          ),
+          "dispatch-from-config: message_received internal hook failed",
+        );
+      }
+      markIdle("plugin_dispatch_gate_claimed");
+      recordProcessed("completed", { reason: "plugin-dispatch-gate-claimed" });
+      return { queuedFinal: false, counts: dispatcher.getQueuedCounts() };
+    }
+  }
+
   // Trigger plugin hooks (fire-and-forget)
   if (hookRunner?.hasHooks("message_received")) {
     fireAndForgetHook(

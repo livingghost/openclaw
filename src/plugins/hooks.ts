@@ -22,6 +22,7 @@ import type {
   PluginHookInboundClaimContext,
   PluginHookInboundClaimEvent,
   PluginHookInboundClaimResult,
+  PluginHookInboundDispatchGateResult,
   PluginHookLlmInputEvent,
   PluginHookLlmOutputEvent,
   PluginHookBeforeResetEvent,
@@ -72,6 +73,7 @@ export type {
   PluginHookInboundClaimContext,
   PluginHookInboundClaimEvent,
   PluginHookInboundClaimResult,
+  PluginHookInboundDispatchGateResult,
   PluginHookAfterCompactionEvent,
   PluginHookMessageContext,
   PluginHookMessageReceivedEvent,
@@ -581,6 +583,22 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
   }
 
   /**
+   * Run inbound_dispatch_gate hook.
+   * Allows plugins to claim inbound messages and skip default agent dispatch.
+   * First plugin to return `{ handled: true }` wins.
+   */
+  async function runInboundDispatchGate(
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+  ): Promise<PluginHookInboundDispatchGateResult | undefined> {
+    return runClaimingHook<"inbound_dispatch_gate", PluginHookInboundDispatchGateResult>(
+      "inbound_dispatch_gate",
+      event,
+      ctx,
+    );
+  }
+
+  /**
    * Run message_received hook.
    * Runs in parallel (fire-and-forget).
    */
@@ -933,6 +951,7 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     runInboundClaim,
     runInboundClaimForPlugin,
     runInboundClaimForPluginOutcome,
+    runInboundDispatchGate,
     runMessageReceived,
     runMessageSending,
     runMessageSent,
