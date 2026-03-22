@@ -41354,6 +41354,7 @@
       "required": false,
       "deprecated": false,
       "sensitive": false,
+<<<<<<< HEAD
       "tags": [
         "network",
         "storage"
@@ -41364,11 +41365,19 @@
     },
     {
       "path": "gateway.sessionsList.fallbackConcurrency",
+=======
+      "tags": [],
+      "hasChildren": true
+    },
+    {
+      "path": "gateway.sessionsList.prewarmConcurrency",
+>>>>>>> fork/perf/sessions-list-usage-prewarm
       "kind": "core",
       "type": "integer",
       "required": false,
       "deprecated": false,
       "sensitive": false,
+<<<<<<< HEAD
       "tags": [
         "network",
         "performance",
@@ -41377,6 +41386,29 @@
       ],
       "label": "Gateway Sessions List Fallback Concurrency",
       "help": "Maximum number of transcript usage fallback reads allowed in parallel during gateway sessions.list. Default: 1, which preserves the current serial behavior; raise this only when host I/O and CPU headroom are available.",
+=======
+      "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "gateway.sessionsList.prewarmUsageCache",
+      "kind": "core",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "gateway.sessionsList.usageCacheMaxEntries",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+>>>>>>> fork/perf/sessions-list-usage-prewarm
       "hasChildren": false
     },
     {

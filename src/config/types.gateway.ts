@@ -391,12 +391,10 @@ export type GatewayToolsConfig = {
 };
 
 export type GatewaySessionsListConfig = {
-  /**
-   * Maximum number of transcript usage fallbacks to hydrate in parallel while
-   * servicing gateway sessions.list.
-   * Default: 1 (preserves the current serial behavior).
-   */
   fallbackConcurrency?: number;
+  usageCacheMaxEntries?: number;
+  prewarmUsageCache?: boolean;
+  prewarmConcurrency?: number;
 };
 
 export type GatewayConfig = {

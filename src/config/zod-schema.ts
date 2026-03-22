@@ -721,6 +721,9 @@ export const OpenClawSchema = z
         sessionsList: z
           .object({
             fallbackConcurrency: z.number().int().min(1).optional(),
+            usageCacheMaxEntries: z.number().int().positive().optional(),
+            prewarmUsageCache: z.boolean().optional(),
+            prewarmConcurrency: z.number().int().min(1).max(64).optional(),
           })
           .strict()
           .optional(),
