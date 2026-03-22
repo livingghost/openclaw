@@ -1456,6 +1456,8 @@ export const isPromptInjectionHookName = (hookName: PluginHookName): boolean =>
 
 // Agent context shared across agent hooks
 export type PluginHookAgentContext = {
+  /** Unique identifier for this agent run. */
+  runId?: string;
   agentId?: string;
   sessionKey?: string;
   sessionId?: string;
