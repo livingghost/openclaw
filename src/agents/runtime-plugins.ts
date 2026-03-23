@@ -25,5 +25,6 @@ export function ensureRuntimePluginsLoaded(params: {
           allowGatewaySubagentBinding: true,
         }
       : undefined,
+    inheritSharedRuntimeOptions: true,
   });
 }

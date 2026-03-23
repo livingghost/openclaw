@@ -16,14 +16,18 @@ export type SubagentRunParams = {
   lane?: string;
   deliver?: boolean;
   idempotencyKey?: string;
-  clientTools?: ClientToolDefinition[];
-  disableTools?: boolean;
-  streamParams?: AgentStreamParams;
+  // clientTools, disableTools, and streamParams are intentionally omitted —
+  // AgentParamsSchema does not include these fields yet, so forwarding them
+  // would cause validation failure at the gateway.
 };
 
 export type SubagentRunResult = {
   runId: string;
 };
+
+export type SubagentEnqueueParams = SubagentRunParams;
+
+export type SubagentEnqueueResult = SubagentRunResult;
 
 export type SubagentWaitParams = {
   runId: string;
@@ -39,6 +43,15 @@ export type SubagentWaitResult = {
     name: string;
     arguments: string;
   }>;
+};
+
+export type SubagentAbortParams = {
+  runId: string;
+  sessionKey?: string;
+};
+
+export type SubagentAbortResult = {
+  aborted: boolean;
 };
 
 export type SubagentGetSessionMessagesParams = {
@@ -65,6 +78,8 @@ export type SubagentDeleteSessionParams = {
 export type PluginRuntime = PluginRuntimeCore & {
   subagent: {
     run: (params: SubagentRunParams) => Promise<SubagentRunResult>;
+    enqueue: (params: SubagentEnqueueParams) => Promise<SubagentEnqueueResult>;
+    abort: (params: SubagentAbortParams) => Promise<SubagentAbortResult>;
     waitForRun: (params: SubagentWaitParams) => Promise<SubagentWaitResult>;
     getSessionMessages: (
       params: SubagentGetSessionMessagesParams,
