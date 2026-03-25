@@ -20,6 +20,7 @@ type DiscordInboundWorkerParams = {
 export type DiscordInboundWorker = {
   enqueue: (job: DiscordInboundJob) => void;
   deactivate: () => void;
+  waitForIdle: () => Promise<void>;
 };
 
 export type DiscordInboundWorkerTestingHooks = {
