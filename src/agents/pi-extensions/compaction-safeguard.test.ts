@@ -131,13 +131,22 @@ const createCompactionEvent = (params: { messageText: string; tokensBefore: numb
 
 const createCompactionContext = (params: {
   sessionManager: ExtensionContext["sessionManager"];
-  getApiKeyMock: ReturnType<typeof vi.fn>;
+  getApiKeyAndHeadersMock?: ReturnType<typeof vi.fn>;
+  getApiKeyMock?: ReturnType<typeof vi.fn>;
 }) =>
   ({
     model: undefined,
     sessionManager: params.sessionManager,
     modelRegistry: {
-      getApiKey: params.getApiKeyMock,
+      getApiKeyAndHeaders:
+        params.getApiKeyAndHeadersMock ??
+        vi.fn(async (model) => {
+          const legacyGetApiKey = params.getApiKeyMock as
+            | undefined
+            | ((model: NonNullable<ExtensionContext["model"]>) => Promise<string | undefined>);
+          const apiKey = await legacyGetApiKey?.(model);
+          return apiKey !== undefined ? { ok: true, apiKey } : { ok: false, error: "missing auth" };
+        }),
     },
   }) as unknown as Partial<ExtensionContext>;
 
@@ -147,10 +156,16 @@ async function runCompactionScenario(params: {
   apiKey: string | null;
 }) {
   const compactionHandler = createCompactionHandler();
-  const getApiKeyMock = vi.fn().mockResolvedValue(params.apiKey ?? undefined);
+  const getApiKeyAndHeadersMock = vi
+    .fn()
+    .mockResolvedValue(
+      params.apiKey !== null
+        ? { ok: true, apiKey: params.apiKey }
+        : { ok: false, error: "missing auth" },
+    );
   const mockContext = createCompactionContext({
     sessionManager: params.sessionManager,
-    getApiKeyMock,
+    getApiKeyAndHeadersMock,
   });
   const result = (await compactionHandler(params.event, mockContext)) as {
     cancel?: boolean;
@@ -160,7 +175,7 @@ async function runCompactionScenario(params: {
       tokensBefore: number;
     };
   };
-  return { result, getApiKeyMock };
+  return { result, getApiKeyAndHeadersMock };
 }
 
 function expectCompactionResult(result: {
