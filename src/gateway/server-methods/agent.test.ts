@@ -508,6 +508,47 @@ describe("gateway agent handler", () => {
     );
   });
 
+  it("rejects colliding /reset before mutating session state", async () => {
+    mocks.performGatewaySessionReset.mockClear();
+    mocks.agentCommand.mockClear();
+    mocks.updateSessionStore.mockClear();
+    mocks.registerAgentRunContext.mockClear();
+    const respond = vi.fn();
+    const context = makeContext();
+    context.chatAbortControllers.set(
+      "collision-reset",
+      createActiveRun("collision-reset", { sessionKey: "agent:other:main" }),
+    );
+
+    await invokeAgent(
+      {
+        message: "/reset",
+        sessionKey: "agent:main:main",
+        idempotencyKey: "collision-reset",
+      },
+      {
+        reqId: "collision-reset",
+        respond,
+        context,
+        client: { connect: { scopes: ["operator.admin"] } } as AgentHandlerArgs["client"],
+      },
+    );
+
+    expect(mocks.performGatewaySessionReset).not.toHaveBeenCalled();
+    expect(mocks.agentCommand).not.toHaveBeenCalled();
+    expect(mocks.updateSessionStore).not.toHaveBeenCalled();
+    expect(context.addChatRun).not.toHaveBeenCalled();
+    expect(mocks.registerAgentRunContext).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: 'idempotencyKey "collision-reset" already belongs to an active run; use a unique key.',
+      }),
+    );
+  });
+
   it("preserves abort-entry grace for timeouts longer than 24 hours", async () => {
     vi.useFakeTimers();
     try {
@@ -705,6 +746,9 @@ describe("gateway agent handler", () => {
     });
     mocks.agentCommand.mockClear();
     const respond = vi.fn();
+    const registerToolEventRecipient = context.registerToolEventRecipient as unknown as ReturnType<
+      typeof vi.fn
+    >;
 
     await invokeAgent(
       {
@@ -716,10 +760,15 @@ describe("gateway agent handler", () => {
         reqId: runId,
         respond,
         context,
+        client: {
+          connId: "conn-1",
+          connect: { caps: ["tool-events"] },
+        } as AgentHandlerArgs["client"],
       },
     );
 
     expect(mocks.agentCommand).not.toHaveBeenCalled();
+    expect(registerToolEventRecipient).not.toHaveBeenCalled();
     expect(context.chatAbortControllers.get(runId)).toBe(collisionEntry);
     expect(context.dedupe.get(`agent:${runId}`)).toEqual(
       expect.objectContaining({
@@ -1288,3 +1337,4 @@ describe("gateway agent handler", () => {
     );
   });
 });
+
