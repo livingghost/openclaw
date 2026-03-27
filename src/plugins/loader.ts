@@ -75,6 +75,7 @@ export type PluginLoadOptions = {
   coreGatewayHandlers?: Record<string, GatewayRequestHandler>;
   runtimeOptions?: CreatePluginRuntimeOptions;
   pluginSdkResolution?: PluginSdkResolutionPreference;
+  inheritSharedRuntimeOptions?: boolean;
   cache?: boolean;
   mode?: "full" | "validate";
   onlyPluginIds?: string[];
