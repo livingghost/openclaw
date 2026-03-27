@@ -207,16 +207,6 @@ function dispatchAgentRunFromGateway(params: {
         status: "error" as const,
         summary: error.message,
       };
-      setGatewayDedupeEntry({
-        dedupe: params.context.dedupe,
-        key: `agent:${params.idempotencyKey}`,
-        entry: {
-          ts: Date.now(),
-          ok: false,
-          payload,
-          error,
-        },
-      });
       params.respond(false, payload, error, { runId: params.runId });
       return;
     }
@@ -500,7 +490,10 @@ export const agentHandlers: GatewayRequestHandlers = {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, `idempotencyKey "${idem}" already belongs to an active run; use a unique key.`),
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `idempotencyKey "${idem}" already belongs to an active run; use a unique key.`,
+        ),
       );
       return;
     }
@@ -850,7 +843,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       ownerConnId: typeof client?.connId === "string" ? client.connId : undefined,
       ownerDeviceId:
         typeof client?.connect?.device?.id === "string" ? client.connect.device.id : undefined,
-      cfg: loadConfig(),
+      cfg: cfgForAgent ?? cfg,
       onDispatchReady:
         connId && wantsToolEvents
           ? () => {
@@ -1002,4 +995,3 @@ export const agentHandlers: GatewayRequestHandlers = {
     });
   },
 };
-

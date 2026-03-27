@@ -503,7 +503,8 @@ describe("gateway agent handler", () => {
       undefined,
       expect.objectContaining({
         code: "INVALID_REQUEST",
-        message: 'idempotencyKey "collision-idem" already belongs to an active run; use a unique key.',
+        message:
+          'idempotencyKey "collision-idem" already belongs to an active run; use a unique key.',
       }),
     );
   });
@@ -544,7 +545,8 @@ describe("gateway agent handler", () => {
       undefined,
       expect.objectContaining({
         code: "INVALID_REQUEST",
-        message: 'idempotencyKey "collision-reset" already belongs to an active run; use a unique key.',
+        message:
+          'idempotencyKey "collision-reset" already belongs to an active run; use a unique key.',
       }),
     );
   });
@@ -772,14 +774,10 @@ describe("gateway agent handler", () => {
     expect(context.chatAbortControllers.get(runId)).toBe(collisionEntry);
     expect(context.dedupe.get(`agent:${runId}`)).toEqual(
       expect.objectContaining({
-        ok: false,
+        ok: true,
         payload: expect.objectContaining({
           runId,
-          status: "error",
-        }),
-        error: expect.objectContaining({
-          code: "INVALID_REQUEST",
-          message: `idempotencyKey "${runId}" already belongs to an active run; use a unique key.`,
+          status: "accepted",
         }),
       }),
     );
@@ -1337,4 +1335,3 @@ describe("gateway agent handler", () => {
     );
   });
 });
-
