@@ -701,7 +701,7 @@ describe("gateway agent handler", () => {
     expect(context.chatAbortControllers.get("run-replacement-error")).toBe(replacement);
   });
 
-  it("rejects late runId collisions before overwriting the abort-controller entry", async () => {
+  it("rejects subagent runId collisions before remapping follow-up state", async () => {
     const childSessionKey = "agent:main:subagent:late-collision";
     const runId = "run-late-collision";
     const completedRun = {
@@ -722,28 +722,10 @@ describe("gateway agent handler", () => {
       sessionId: "collision-session",
       sessionKey: "agent:other:main",
     });
-
-    mocks.loadSessionEntry.mockReturnValue({
-      cfg: {},
-      storePath: "/tmp/sessions.json",
-      entry: {
-        sessionId: "sess-followup",
-        updatedAt: Date.now(),
-      },
-      canonicalKey: childSessionKey,
-    });
-    mocks.updateSessionStore.mockImplementation(async (_path, updater) => {
-      const store: Record<string, unknown> = {
-        [childSessionKey]: {
-          sessionId: "sess-followup",
-          updatedAt: Date.now(),
-        },
-      };
-      const updated = await updater(store);
-      context.chatAbortControllers.set(runId, collisionEntry);
-      return updated;
-    });
+    context.chatAbortControllers.set(runId, collisionEntry);
     mocks.getLatestSubagentRunByChildSessionKey.mockReturnValueOnce(completedRun);
+    mocks.loadSessionEntry.mockClear();
+    mocks.updateSessionStore.mockClear();
     mocks.replaceSubagentRunAfterSteer.mockClear();
     mocks.agentCommand.mockClear();
     mocks.registerAgentRunContext.mockClear();
@@ -770,6 +752,8 @@ describe("gateway agent handler", () => {
     );
 
     expect(mocks.agentCommand).not.toHaveBeenCalled();
+    expect(mocks.loadSessionEntry).not.toHaveBeenCalled();
+    expect(mocks.updateSessionStore).not.toHaveBeenCalled();
     expect(mocks.replaceSubagentRunAfterSteer).not.toHaveBeenCalled();
     expect(mocks.registerAgentRunContext).not.toHaveBeenCalled();
     expect(registerToolEventRecipient).not.toHaveBeenCalled();
@@ -777,47 +761,27 @@ describe("gateway agent handler", () => {
     expect(context.dedupe.has(`agent:${runId}`)).toBe(false);
     expect(respond).toHaveBeenNthCalledWith(
       1,
-      true,
-      expect.objectContaining({
-        runId,
-        status: "accepted",
-      }),
-      undefined,
-      { runId },
-    );
-    expect(respond).toHaveBeenNthCalledWith(
-      2,
       false,
-      expect.objectContaining({
-        runId,
-        status: "error",
-      }),
+      undefined,
       expect.objectContaining({
         code: "INVALID_REQUEST",
         message: `idempotencyKey "${runId}" already belongs to an active run; use a unique key.`,
       }),
-      { runId },
     );
   });
 
-  it("clears main-session pre-ack state on late runId collisions", async () => {
+  it("rejects main-session runId collisions before mutating session state", async () => {
     const runId = "run-main-late-collision";
     primeMainAgentRun();
     mocks.agentCommand.mockClear();
+    mocks.updateSessionStore.mockClear();
     mocks.registerAgentRunContext.mockClear();
     const context = makeContext();
     const collisionEntry = createActiveRun(runId, {
       sessionId: "collision-session",
       sessionKey: "agent:other:main",
     });
-    mocks.updateSessionStore.mockImplementationOnce(async (_path, updater) => {
-      const store: Record<string, unknown> = {
-        "agent:main:main": buildExistingMainStoreEntry(),
-      };
-      const updated = await updater(store);
-      context.chatAbortControllers.set(runId, collisionEntry);
-      return updated;
-    });
+    context.chatAbortControllers.set(runId, collisionEntry);
     const respond = vi.fn();
 
     await invokeAgent(
@@ -834,32 +798,19 @@ describe("gateway agent handler", () => {
     );
 
     expect(mocks.agentCommand).not.toHaveBeenCalled();
+    expect(mocks.updateSessionStore).not.toHaveBeenCalled();
     expect(context.addChatRun).not.toHaveBeenCalled();
     expect(mocks.registerAgentRunContext).not.toHaveBeenCalled();
     expect(context.chatAbortControllers.get(runId)).toBe(collisionEntry);
     expect(context.dedupe.has(`agent:${runId}`)).toBe(false);
     expect(respond).toHaveBeenNthCalledWith(
       1,
-      true,
-      expect.objectContaining({
-        runId,
-        status: "accepted",
-      }),
-      undefined,
-      { runId },
-    );
-    expect(respond).toHaveBeenNthCalledWith(
-      2,
       false,
-      expect.objectContaining({
-        runId,
-        status: "error",
-      }),
+      undefined,
       expect.objectContaining({
         code: "INVALID_REQUEST",
         message: `idempotencyKey "${runId}" already belongs to an active run; use a unique key.`,
       }),
-      { runId },
     );
   });
 
