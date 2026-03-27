@@ -200,6 +200,7 @@ function setOwnedAbortControllerEntry(params: {
   });
   const now = Date.now();
   params.context.chatAbortControllers.set(params.runId, {
+    kind: "agent",
     controller: params.controller,
     sessionKey: params.sessionKey,
     sessionId: params.sessionId ?? "",

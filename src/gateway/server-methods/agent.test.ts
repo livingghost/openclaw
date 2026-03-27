@@ -149,6 +149,7 @@ function createActiveRun(
 ): ChatAbortControllerEntry {
   const now = Date.now();
   return {
+    kind: overrides.kind ?? "agent",
     controller: overrides.controller ?? new AbortController(),
     sessionId: overrides.sessionId ?? `${runId}-session`,
     sessionKey: overrides.sessionKey ?? "agent:main:main",

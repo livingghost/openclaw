@@ -350,6 +350,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const respond = vi.fn();
     const context = createChatContext();
     context.chatAbortControllers.set("run-same-session", {
+      kind: "chat",
       controller: new AbortController(),
       sessionId: "sess-prev",
       sessionKey: "main",
@@ -357,6 +358,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       expiresAtMs: Date.now() + 10_000,
     });
     context.chatAbortControllers.set("run-other-session", {
+      kind: "chat",
       controller: new AbortController(),
       sessionId: "sess-other",
       sessionKey: "other",
@@ -466,6 +468,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const respond = vi.fn();
     const context = createChatContext();
     context.chatAbortControllers.set("idem-chat-agent-collision", {
+      kind: "agent",
       controller: new AbortController(),
       sessionId: "sess-agent",
       sessionKey: "main",

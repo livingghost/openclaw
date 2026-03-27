@@ -18,6 +18,7 @@ const ABORTED_RUN_TTL_MS = 60 * 60_000;
 function createActiveRun(sessionKey: string): ChatAbortControllerEntry {
   const now = Date.now();
   return {
+    kind: "chat",
     controller: new AbortController(),
     sessionId: "sess-1",
     sessionKey,

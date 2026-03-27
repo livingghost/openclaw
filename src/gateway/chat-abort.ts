@@ -1,6 +1,7 @@
 import { isAbortRequestText } from "../auto-reply/reply/abort-primitives.js";
 
 export type ChatAbortControllerEntry = {
+  kind: "chat" | "agent";
   controller: AbortController;
   sessionId: string;
   sessionKey: string;
