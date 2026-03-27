@@ -509,6 +509,25 @@ export const agentHandlers: GatewayRequestHandlers = {
         context.dedupe.delete(`agent:${idem}`);
       }
     };
+    const writePreDispatchErrorIfAccepted = (error: ReturnType<typeof errorShape>) => {
+      const current = context.dedupe.get(`agent:${idem}`);
+      if (current?.payload !== accepted) {
+        return;
+      }
+      setGatewayDedupeEntry({
+        dedupe: context.dedupe,
+        key: `agent:${idem}`,
+        entry: {
+          ts: Date.now(),
+          ok: false,
+          error,
+        },
+      });
+    };
+    const respondPreDispatchFailure = (error: ReturnType<typeof errorShape>) => {
+      writePreDispatchErrorIfAccepted(error);
+      respond(false, undefined, error);
+    };
     const clearClaimedAbortControllerIfOwned = () => {
       if (!claimedAbortController) {
         return;
@@ -562,9 +581,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       const resetCommandMatch = message.match(RESET_COMMAND_RE);
       if (resetCommandMatch && requestedSessionKey) {
         if (!canResetSession) {
-          respond(
-            false,
-            undefined,
+          respondPreDispatchFailure(
             errorShape(ErrorCodes.INVALID_REQUEST, `missing scope: ${ADMIN_SCOPE}`),
           );
           return;
@@ -575,7 +592,7 @@ export const agentHandlers: GatewayRequestHandlers = {
           reason: resetReason,
         });
         if (!resetResult.ok) {
-          respond(false, undefined, resetResult.error);
+          respondPreDispatchFailure(resetResult.error);
           return;
         }
         requestedSessionKey = resetResult.key;
@@ -665,9 +682,7 @@ export const agentHandlers: GatewayRequestHandlers = {
           chatType: entry?.chatType,
         });
         if (sendPolicy === "deny") {
-          respond(
-            false,
-            undefined,
+          respondPreDispatchFailure(
             errorShape(ErrorCodes.INVALID_REQUEST, "send blocked by session policy"),
           );
           return;
@@ -775,7 +790,7 @@ export const agentHandlers: GatewayRequestHandlers = {
             resolvedAccountId,
           };
         } catch (err) {
-          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+          respondPreDispatchFailure(errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
           return;
         }
       }
@@ -794,9 +809,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       }
 
       if (wantsDelivery && resolvedChannel === INTERNAL_MESSAGE_CHANNEL) {
-        respond(
-          false,
-          undefined,
+        respondPreDispatchFailure(
           errorShape(
             ErrorCodes.INVALID_REQUEST,
             "delivery channel is required: pass --channel/--reply-channel or use a main session with a previous channel",

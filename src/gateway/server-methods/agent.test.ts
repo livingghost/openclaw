@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { BARE_SESSION_RESET_PROMPT } from "../../auto-reply/reply/session-reset-prompt.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.js";
+import { waitForTerminalGatewayDedupe } from "./agent-wait-dedupe.js";
 import { agentHandlers } from "./agent.js";
 import { expectSubagentFollowupReactivation } from "./subagent-followup.test-helpers.js";
 import type { GatewayRequestContext } from "./types.js";
@@ -620,6 +621,122 @@ describe("gateway agent handler", () => {
       updatedAt: Date.now(),
     });
     await firstPromise;
+  });
+
+  it("records a terminal error if setup fails after a retry already observed accepted", async () => {
+    const runId = "run-preparing-reset-failure";
+    primeMainAgentRun();
+    const context = makeContext();
+    const firstRespond = vi.fn();
+    const retryRespond = vi.fn();
+    const adminClient = {
+      connect: {
+        role: "operator",
+        scopes: ["operator.admin"],
+      },
+    } as unknown as Parameters<typeof invokeAgent>[1]["client"];
+    const resetDeferred = createDeferred<
+      | {
+          ok: true;
+          key: string;
+          entry: { sessionId: string };
+        }
+      | {
+          ok: false;
+          error: { code: string; message: string };
+        }
+    >();
+
+    mocks.performGatewaySessionReset.mockImplementationOnce(async () => {
+      return await resetDeferred.promise;
+    });
+
+    const firstPromise = invokeAgent(
+      {
+        message: "/reset",
+        sessionKey: "agent:main:main",
+        idempotencyKey: runId,
+      },
+      {
+        reqId: `${runId}-first`,
+        respond: firstRespond,
+        context,
+        client: adminClient,
+      },
+    );
+
+    await waitForAssertion(() => {
+      expect(context.dedupe.get(`agent:${runId}`)?.payload).toEqual(
+        expect.objectContaining({
+          runId,
+          status: "accepted",
+        }),
+      );
+      expect(context.chatAbortControllers.get(runId)?.sessionKey).toBe("agent:main:main");
+    });
+
+    const waitPromise = waitForTerminalGatewayDedupe({
+      dedupe: context.dedupe,
+      runId,
+      timeoutMs: 1_000,
+    });
+
+    await invokeAgent(
+      {
+        message: "/reset",
+        sessionKey: "agent:main:main",
+        idempotencyKey: runId,
+      },
+      {
+        reqId: `${runId}-retry`,
+        respond: retryRespond,
+        context,
+        client: adminClient,
+      },
+    );
+
+    expect(retryRespond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        runId,
+        status: "accepted",
+      }),
+      undefined,
+      { cached: true },
+    );
+
+    resetDeferred.resolve({
+      ok: false,
+      error: {
+        code: "INVALID_REQUEST",
+        message: "reset failed",
+      },
+    });
+    await firstPromise;
+
+    await expect(waitPromise).resolves.toEqual(
+      expect.objectContaining({
+        status: "error",
+        error: "reset failed",
+      }),
+    );
+    expect(context.dedupe.get(`agent:${runId}`)).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({
+          message: "reset failed",
+        }),
+      }),
+    );
+    expect(context.chatAbortControllers.has(runId)).toBe(false);
+    expect(firstRespond).toHaveBeenLastCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: "reset failed",
+      }),
+    );
+    mocks.performGatewaySessionReset.mockClear();
   });
 
   it("preserves abort-entry grace for timeouts longer than 24 hours", async () => {
