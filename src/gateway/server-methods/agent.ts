@@ -184,6 +184,7 @@ function dispatchAgentRunFromGateway(params: {
   ownerConnId?: string;
   ownerDeviceId?: string;
   cfg?: Parameters<typeof resolveAgentTimeoutMs>[0]["cfg"];
+  onDispatchReady?: () => void;
 }) {
   const controller = new AbortController();
   const registeredAbortController = Boolean(params.sessionKey);
@@ -252,6 +253,7 @@ function dispatchAgentRunFromGateway(params: {
       ...(params.ownerDeviceId && { ownerDeviceId: params.ownerDeviceId }),
     });
   }
+  params.onDispatchReady?.();
   void agentCommandFromIngress(
     { ...params.ingressOpts, abortSignal: controller.signal },
     defaultRuntime,
@@ -489,6 +491,19 @@ export const agentHandlers: GatewayRequestHandlers = {
     let resolvedSessionKey = requestedSessionKey;
     let isNewSession = false;
     let skipTimestampInjection = false;
+    const runId = idem;
+
+    // chat.send and agent share the same active-run namespace. Same-agent retries
+    // still dedupe via the cache above, but unrelated active runs must not reuse
+    // the same runId or abort/wait bookkeeping becomes ambiguous.
+    if (context.chatAbortControllers.has(runId)) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, `idempotencyKey "${idem}" already belongs to an active run; use a unique key.`),
+      );
+      return;
+    }
 
     const resetCommandMatch = message.match(RESET_COMMAND_RE);
     if (resetCommandMatch && requestedSessionKey) {
@@ -530,19 +545,6 @@ export const agentHandlers: GatewayRequestHandlers = {
     // See: https://github.com/moltbot/moltbot/issues/3658
     if (!skipTimestampInjection) {
       message = injectTimestamp(message, timestampOptsFromConfig(cfg));
-    }
-
-    const runId = idem;
-    // chat.send and agent share the same active-run namespace. Same-agent retries
-    // still dedupe via the cache above, but unrelated active runs must not reuse
-    // the same runId or abort/wait bookkeeping becomes ambiguous.
-    if (context.chatAbortControllers.has(runId)) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, `idempotencyKey "${idem}" already belongs to an active run; use a unique key.`),
-      );
-      return;
     }
 
     if (requestedSessionKey) {
@@ -652,7 +654,6 @@ export const agentHandlers: GatewayRequestHandlers = {
       GATEWAY_CLIENT_CAPS.TOOL_EVENTS,
     );
     if (connId && wantsToolEvents) {
-      context.registerToolEventRecipient(runId, connId);
       // Register for any other active runs *in the same session* so
       // late-joining clients (e.g. page refresh mid-response) receive
       // in-progress tool events without leaking cross-session data.
@@ -850,6 +851,12 @@ export const agentHandlers: GatewayRequestHandlers = {
       ownerDeviceId:
         typeof client?.connect?.device?.id === "string" ? client.connect.device.id : undefined,
       cfg: loadConfig(),
+      onDispatchReady:
+        connId && wantsToolEvents
+          ? () => {
+              context.registerToolEventRecipient(runId, connId);
+            }
+          : undefined,
     });
   },
   "agent.identity.get": ({ params, respond }) => {
@@ -995,3 +1002,4 @@ export const agentHandlers: GatewayRequestHandlers = {
     });
   },
 };
+
