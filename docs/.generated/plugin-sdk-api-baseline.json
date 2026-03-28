@@ -442,7 +442,7 @@
           "exportName": "PluginRuntime",
           "kind": "type",
           "source": {
-            "line": 76,
+            "line": 63,
             "path": "src/plugins/runtime/types.ts"
           }
         },
@@ -3864,7 +3864,7 @@
           "exportName": "PluginRuntime",
           "kind": "type",
           "source": {
-            "line": 76,
+            "line": 63,
             "path": "src/plugins/runtime/types.ts"
           }
         },
@@ -5114,7 +5114,7 @@
           "exportName": "PluginRuntime",
           "kind": "type",
           "source": {
-            "line": 76,
+            "line": 63,
             "path": "src/plugins/runtime/types.ts"
           }
         }
@@ -5289,7 +5289,7 @@
           "exportName": "PluginRuntime",
           "kind": "type",
           "source": {
-            "line": 76,
+            "line": 63,
             "path": "src/plugins/runtime/types.ts"
           }
         },

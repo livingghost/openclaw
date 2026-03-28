@@ -82,8 +82,6 @@ function createUnavailableSubagentRuntime(): PluginRuntime["subagent"] {
   };
   return {
     run: unavailable,
-    enqueue: unavailable,
-    abort: unavailable,
     waitForRun: unavailable,
     getSessionMessages: unavailable,
     getSession: unavailable,
@@ -121,6 +119,10 @@ const gatewaySubagentState = resolveGlobalSingleton<GatewaySubagentState>(
  */
 export function setGatewaySubagentRuntime(subagent: PluginRuntime["subagent"]): void {
   gatewaySubagentState.subagent = subagent;
+}
+
+export function getGatewaySubagentRuntime(): PluginRuntime["subagent"] | undefined {
+  return gatewaySubagentState.subagent;
 }
 
 /**

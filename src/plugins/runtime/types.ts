@@ -23,10 +23,6 @@ export type SubagentRunResult = {
   runId: string;
 };
 
-export type SubagentEnqueueParams = SubagentRunParams;
-
-export type SubagentEnqueueResult = SubagentRunResult;
-
 export type SubagentWaitParams = {
   runId: string;
   timeoutMs?: number;
@@ -41,15 +37,6 @@ export type SubagentWaitResult = {
     name: string;
     arguments: string;
   }>;
-};
-
-export type SubagentAbortParams = {
-  runId: string;
-  sessionKey?: string;
-};
-
-export type SubagentAbortResult = {
-  aborted: boolean;
 };
 
 export type SubagentGetSessionMessagesParams = {
@@ -76,8 +63,6 @@ export type SubagentDeleteSessionParams = {
 export type PluginRuntime = PluginRuntimeCore & {
   subagent: {
     run: (params: SubagentRunParams) => Promise<SubagentRunResult>;
-    enqueue: (params: SubagentEnqueueParams) => Promise<SubagentEnqueueResult>;
-    abort: (params: SubagentAbortParams) => Promise<SubagentAbortResult>;
     waitForRun: (params: SubagentWaitParams) => Promise<SubagentWaitResult>;
     getSessionMessages: (
       params: SubagentGetSessionMessagesParams,

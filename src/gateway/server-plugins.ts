@@ -6,7 +6,11 @@ import { resolveGatewayStartupPluginIds } from "../plugins/channel-plugin-ids.js
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
-import { setGatewaySubagentRuntime } from "../plugins/runtime/index.js";
+import {
+  clearGatewaySubagentRuntime,
+  getGatewaySubagentRuntime,
+  setGatewaySubagentRuntime,
+} from "../plugins/runtime/index.js";
 import {
   clearSharedPluginRuntimeOptions,
   getSharedPluginRuntimeOptions,
@@ -309,7 +313,7 @@ async function dispatchGatewayMethod<T>(
 function resolvePluginSubagentIdempotencyKey(params: {
   idempotencyKey?: string;
   sessionKey: string;
-  method: "agent" | "agent.enqueue";
+  method: "agent";
 }): string {
   const provided = typeof params.idempotencyKey === "string" ? params.idempotencyKey.trim() : "";
   if (provided) {
@@ -382,67 +386,6 @@ export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       }
       return { runId };
     },
-    async enqueue(params) {
-      const scope = getPluginRuntimeGatewayRequestScope();
-      const overrideRequested = Boolean(params.provider || params.model);
-      const hasRequestScopeClient = Boolean(scope?.client);
-      let allowOverride = hasRequestScopeClient && canClientUseModelOverride(scope?.client ?? null);
-      let allowSyntheticModelOverride = false;
-      if (overrideRequested && !allowOverride && !hasRequestScopeClient) {
-        const fallbackAuth = authorizeFallbackModelOverride({
-          pluginId: scope?.pluginId,
-          provider: params.provider,
-          model: params.model,
-        });
-        if (!fallbackAuth.allowed) {
-          throw new Error(fallbackAuth.reason);
-        }
-        allowOverride = true;
-        allowSyntheticModelOverride = true;
-      }
-      if (overrideRequested && !allowOverride) {
-        throw new Error("provider/model override is not authorized for this plugin subagent run.");
-      }
-      const payload = await dispatchGatewayMethod<{ runId?: string }>(
-        "agent.enqueue",
-        {
-          sessionKey: params.sessionKey,
-          message: params.message,
-          deliver: params.deliver ?? false,
-          idempotencyKey: resolvePluginSubagentIdempotencyKey({
-            idempotencyKey: params.idempotencyKey,
-            sessionKey: params.sessionKey,
-            method: "agent.enqueue",
-          }),
-          ...(allowOverride && params.provider && { provider: params.provider }),
-          ...(allowOverride && params.model && { model: params.model }),
-          ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
-          ...(params.lane && { lane: params.lane }),
-        },
-        {
-          allowSyntheticModelOverride,
-          syntheticScopes: [WRITE_SCOPE],
-        },
-      );
-      const runId = payload?.runId;
-      if (typeof runId !== "string" || !runId) {
-        throw new Error("Gateway agent.enqueue method returned an invalid runId.");
-      }
-      return { runId };
-    },
-    async abort(params) {
-      const payload = await dispatchGatewayMethod<{ aborted?: boolean }>(
-        "agent.abort",
-        {
-          runId: params.runId,
-          ...(params.sessionKey && { sessionKey: params.sessionKey }),
-        },
-        {
-          syntheticScopes: [ADMIN_SCOPE],
-        },
-      );
-      return { aborted: payload?.aborted === true };
-    },
     async waitForRun(params) {
       const payload = await dispatchGatewayMethod<{
         status?: string;
@@ -509,6 +452,7 @@ export function loadGatewayPlugins(params: {
     config: params.cfg,
     env: process.env,
   }).config;
+  const previousGatewaySubagentRuntime = getGatewaySubagentRuntime();
   const gatewaySubagentRuntime = createGatewaySubagentRuntime();
   setGatewaySubagentRuntime(gatewaySubagentRuntime);
   const previousSharedRuntimeOptions = getSharedPluginRuntimeOptions();
@@ -539,6 +483,11 @@ export function loadGatewayPlugins(params: {
       preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
     });
   } catch (error) {
+    if (previousGatewaySubagentRuntime) {
+      setGatewaySubagentRuntime(previousGatewaySubagentRuntime);
+    } else {
+      clearGatewaySubagentRuntime();
+    }
     if (previousSharedRuntimeOptions) {
       setSharedPluginRuntimeOptions(previousSharedRuntimeOptions);
     } else {
