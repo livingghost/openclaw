@@ -74,17 +74,21 @@ function broadcastChatAborted(
   ops.nodeSendToSession(sessionKey, "chat", payload);
 }
 
-export function abortChatRunById(
+export function abortTrackedRunById(
   ops: ChatAbortOps,
   params: {
     runId: string;
     sessionKey: string;
     stopReason?: string;
+    expectedKind?: ChatAbortControllerEntry["kind"];
   },
 ): { aborted: boolean } {
-  const { runId, sessionKey, stopReason } = params;
+  const { runId, sessionKey, stopReason, expectedKind } = params;
   const active = ops.chatAbortControllers.get(runId);
   if (!active) {
+    return { aborted: false };
+  }
+  if (expectedKind && active.kind !== expectedKind) {
     return { aborted: false };
   }
   if (active.sessionKey !== sessionKey) {
@@ -108,6 +112,17 @@ export function abortChatRunById(
   return { aborted: true };
 }
 
+export function abortChatRunById(
+  ops: ChatAbortOps,
+  params: {
+    runId: string;
+    sessionKey: string;
+    stopReason?: string;
+  },
+): { aborted: boolean } {
+  return abortTrackedRunById(ops, { ...params, expectedKind: "chat" });
+}
+
 export function abortChatRunsForSessionKey(
   ops: ChatAbortOps,
   params: {
@@ -118,6 +133,9 @@ export function abortChatRunsForSessionKey(
   const { sessionKey, stopReason } = params;
   const runIds: string[] = [];
   for (const [runId, active] of ops.chatAbortControllers) {
+    if (active.kind !== "chat") {
+      continue;
+    }
     if (active.sessionKey !== sessionKey) {
       continue;
     }

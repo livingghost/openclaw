@@ -7,7 +7,7 @@ import { loadOpenClawPlugins } from "../plugins/loader.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { abortChatRunById } from "./chat-abort.js";
+import { abortTrackedRunById } from "./chat-abort.js";
 import { ADMIN_SCOPE, WRITE_SCOPE } from "./method-scopes.js";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "./protocol/client-info.js";
 import type { ErrorShape } from "./protocol/index.js";
@@ -304,15 +304,16 @@ export function createGatewayAgentAbort(): PluginRuntime["agent"]["abort"] {
     if (!active || active.kind !== "agent") {
       return { aborted: false };
     }
-    return abortChatRunById(ctx, {
+    return abortTrackedRunById(ctx, {
       runId: params.runId,
       // When sessionKey is omitted, fall back to the entry's own sessionKey.
-      // This intentionally bypasses the cross-session ownership check in
-      // abortChatRunById, allowing any gateway-bound plugin to abort any run
+      // This intentionally bypasses the helper's cross-session ownership check,
+      // allowing any gateway-bound plugin to abort any run
       // it knows the runId of. This is acceptable because abort access is
       // gated by allowGatewaySubagentBinding at the runtime level.
       sessionKey: params.sessionKey ?? active.sessionKey,
       stopReason: "plugin",
+      expectedKind: "agent",
     });
   };
 }

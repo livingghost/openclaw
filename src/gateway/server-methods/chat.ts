@@ -1203,6 +1203,10 @@ export const chatHandlers: GatewayRequestHandlers = {
       respond(true, { ok: true, aborted: false, runIds: [] });
       return;
     }
+    if (active.kind !== "chat") {
+      respond(true, { ok: true, aborted: false, runIds: [] });
+      return;
+    }
     if (active.sessionKey !== rawSessionKey) {
       respond(
         false,
