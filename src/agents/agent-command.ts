@@ -76,6 +76,7 @@ import {
   resolveDefaultModelForAgent,
   resolveThinkingDefault,
 } from "./model-selection.js";
+import { resolvePreparedExtraParams } from "./pi-embedded-runner/extra-params.js";
 import { buildWorkspaceSkillSnapshot } from "./skills.js";
 import { getSkillsSnapshotVersion } from "./skills/refresh.js";
 import { normalizeSpawnedRunMetadata } from "./spawned-context.js";
@@ -356,6 +357,15 @@ async function agentCommandInternal(
     acpResolution,
   } = prepared;
   let sessionEntry = prepared.sessionEntry;
+
+  const resolveRequestedStructuredOutput = (provider: string, model: string): boolean =>
+    resolvePreparedExtraParams({
+      cfg,
+      provider,
+      modelId: model,
+      extraParamsOverride: opts.streamParams,
+      agentId: sessionAgentId,
+    }).toolChoice != null;
 
   try {
     if (opts.deliver === true) {
@@ -698,6 +708,13 @@ async function agentCommandInternal(
         });
       }
     }
+    if (sessionKey) {
+      registerAgentRunContext(runId, {
+        sessionKey,
+        verboseLevel: resolvedVerboseLevel,
+        requestedStructuredOutput: resolveRequestedStructuredOutput(provider, model),
+      });
+    }
     let sessionFile: string | undefined;
     if (sessionStore && sessionKey) {
       const resolvedSessionFile = await resolveSessionTranscriptFile({
@@ -759,6 +776,16 @@ async function agentCommandInternal(
         run: (providerOverride, modelOverride, runOptions) => {
           const isFallbackRetry = fallbackAttemptIndex > 0;
           fallbackAttemptIndex += 1;
+          if (sessionKey) {
+            registerAgentRunContext(runId, {
+              sessionKey,
+              verboseLevel: resolvedVerboseLevel,
+              requestedStructuredOutput: resolveRequestedStructuredOutput(
+                providerOverride,
+                modelOverride,
+              ),
+            });
+          }
           return runAgentAttempt({
             providerOverride,
             modelOverride,
