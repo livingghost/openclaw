@@ -187,4 +187,84 @@ describe("sessions.send completed subagent follow-up status", () => {
       undefined,
     );
   });
+
+  it("rejects follow-up steering when the caller only owns a subset of active runs", async () => {
+    const sessionKey = "agent:main:subagent:mixed-ownership";
+    const ownedEntry: ChatAbortControllerEntry = {
+      kind: "agent",
+      controller: new AbortController(),
+      sessionId: "sess-mixed",
+      sessionKey,
+      startedAtMs: Date.now(),
+      expiresAtMs: Date.now() + 60_000,
+      ownerConnId: "conn-owned",
+    };
+    const foreignEntry: ChatAbortControllerEntry = {
+      kind: "agent",
+      controller: new AbortController(),
+      sessionId: "sess-mixed",
+      sessionKey,
+      startedAtMs: Date.now(),
+      expiresAtMs: Date.now() + 60_000,
+      ownerConnId: "conn-foreign",
+    };
+
+    loadSessionEntryMock.mockReturnValue({
+      canonicalKey: sessionKey,
+      storePath: "/tmp/sessions.json",
+      entry: { sessionId: "sess-mixed" },
+    });
+    readSessionMessagesMock.mockReturnValue([]);
+
+    const respond = vi.fn() as unknown as RespondFn;
+    const context = {
+      chatAbortControllers: new Map([
+        ["run-owned", ownedEntry],
+        ["run-foreign", foreignEntry],
+      ]),
+      chatRunBuffers: new Map(),
+      chatDeltaSentAt: new Map(),
+      chatDeltaLastBroadcastLen: new Map(),
+      chatAbortedRuns: new Map(),
+      removeChatRun: vi.fn(() => undefined),
+      agentRunSeq: new Map(),
+      broadcast: vi.fn(),
+      nodeSendToSession: vi.fn(),
+      broadcastToConnIds: vi.fn(),
+      getSessionEventSubscriberConnIds: () => new Set<string>(),
+    } as unknown as GatewayRequestContext;
+
+    await sessionsHandlers["sessions.steer"]({
+      req: { id: "req-3" } as never,
+      params: {
+        key: sessionKey,
+        message: "follow-up",
+        idempotencyKey: "run-new",
+      },
+      respond,
+      context,
+      client: {
+        connId: "conn-owned",
+        connect: {
+          scopes: [],
+          device: {},
+        },
+      } as never,
+      isWebchatConnect: () => false,
+    });
+
+    expect(ownedEntry.controller.signal.aborted).toBe(false);
+    expect(foreignEntry.controller.signal.aborted).toBe(false);
+    expect(context.chatAbortControllers.has("run-owned")).toBe(true);
+    expect(context.chatAbortControllers.has("run-foreign")).toBe(true);
+    expect(chatSendMock).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: "unauthorized",
+      }),
+    );
+  });
 });

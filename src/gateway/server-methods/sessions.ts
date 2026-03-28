@@ -396,7 +396,7 @@ async function interruptSessionRunIfActive(params: {
       canRequesterInterruptTrackedRun(active, requester),
     );
 
-    if (matchedRuns.length > 0 && authorizedRuns.length === 0) {
+    if (matchedRuns.length > 0 && authorizedRuns.length !== matchedRuns.length) {
       return {
         interrupted: true,
         error: errorShape(ErrorCodes.INVALID_REQUEST, "unauthorized"),
