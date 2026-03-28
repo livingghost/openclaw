@@ -14,9 +14,6 @@ export type SubagentRunParams = {
   lane?: string;
   deliver?: boolean;
   idempotencyKey?: string;
-  // clientTools, disableTools, and streamParams are intentionally omitted —
-  // AgentParamsSchema does not include these fields yet, so forwarding them
-  // would cause validation failure at the gateway.
 };
 
 export type SubagentRunResult = {
