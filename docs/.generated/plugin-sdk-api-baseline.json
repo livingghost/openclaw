@@ -2701,7 +2701,7 @@
           "exportName": "buildModelsProviderData",
           "kind": "function",
           "source": {
-            "line": 37,
+            "line": 39,
             "path": "src/auto-reply/reply/commands-models.ts"
           }
         },
@@ -2728,7 +2728,7 @@
           "exportName": "formatModelsAvailableHeader",
           "kind": "function",
           "source": {
-            "line": 204,
+            "line": 215,
             "path": "src/auto-reply/reply/commands-models.ts"
           }
         },
@@ -2962,7 +2962,7 @@
           "exportName": "resolveModelsCommandReply",
           "kind": "function",
           "source": {
-            "line": 220,
+            "line": 231,
             "path": "src/auto-reply/reply/commands-models.ts"
           }
         },
