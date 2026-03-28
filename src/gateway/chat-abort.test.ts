@@ -9,6 +9,7 @@ import {
 function createActiveEntry(sessionKey: string): ChatAbortControllerEntry {
   const now = Date.now();
   return {
+    kind: "chat",
     controller: new AbortController(),
     sessionId: "sess-1",
     sessionKey,

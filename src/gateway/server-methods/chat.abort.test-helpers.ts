@@ -11,6 +11,7 @@ export function createActiveRun(
 ) {
   const now = Date.now();
   return {
+    kind: "chat" as const,
     controller: new AbortController(),
     sessionId: params.sessionId ?? `${sessionKey}-session`,
     sessionKey,
