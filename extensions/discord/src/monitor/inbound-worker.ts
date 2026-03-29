@@ -27,6 +27,17 @@ export type DiscordInboundWorkerTestingHooks = {
   deliverDiscordReply?: typeof deliverDiscordReply;
 };
 
+function createPendingRunSignal(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve = () => {};
+  const promise = new Promise<void>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
 function formatDiscordRunContextSuffix(job: DiscordInboundJob): string {
   const channelId = job.payload.messageChannelId?.trim();
   const messageId = job.payload.data?.message?.id?.trim();
@@ -161,10 +172,17 @@ export function createDiscordInboundWorker(
 ): DiscordInboundWorker {
   const runQueue = new KeyedAsyncQueue();
   const pendingRuns = new Set<Promise<void>>();
+  let pendingTimedOutRunCount = 0;
+  let pendingTimedOutRunSignal = createPendingRunSignal();
   const runState = createRunStateMachine({
     setStatus: params.setStatus,
     abortSignal: params.abortSignal,
   });
+
+  const notifyPendingTimedOutRunChange = () => {
+    pendingTimedOutRunSignal.resolve();
+    pendingTimedOutRunSignal = createPendingRunSignal();
+  };
 
   return {
     enqueue(job) {
@@ -184,9 +202,10 @@ export function createDiscordInboundWorker(
             runTimeoutMs: params.runTimeoutMs,
             testing: params.__testing,
             onRunSettledAfterTimeout: (settledRun) => {
-              pendingRuns.add(settledRun);
+              pendingTimedOutRunCount += 1;
               void settledRun.finally(() => {
-                pendingRuns.delete(settledRun);
+                pendingTimedOutRunCount = Math.max(0, pendingTimedOutRunCount - 1);
+                notifyPendingTimedOutRunChange();
               });
             },
           });
@@ -208,8 +227,16 @@ export function createDiscordInboundWorker(
     },
     deactivate: runState.deactivate,
     waitForIdle: async () => {
-      while (pendingRuns.size > 0) {
-        await Promise.allSettled([...pendingRuns]);
+      while (pendingRuns.size > 0 || pendingTimedOutRunCount > 0) {
+        if (pendingRuns.size > 0) {
+          await Promise.allSettled([...pendingRuns]);
+          continue;
+        }
+        const waitForTimedOutRunSignal = pendingTimedOutRunSignal.promise;
+        if (pendingTimedOutRunCount === 0) {
+          continue;
+        }
+        await waitForTimedOutRunSignal;
       }
     },
   };
