@@ -30,6 +30,7 @@ import {
 } from "../../utils/message-channel.js";
 import {
   abortChatRunById,
+  clearTrackedRunEntryIfOwned,
   type ChatAbortControllerEntry,
   type ChatAbortOps,
   isChatStopCommandText,
@@ -1013,6 +1014,9 @@ function resolveAuthorizedRunIdsForSession(params: {
   const authorizedRunIds: string[] = [];
   let matchedSessionRuns = 0;
   for (const [runId, active] of params.chatAbortControllers) {
+    if (active.kind !== "chat") {
+      continue;
+    }
     if (active.sessionKey !== params.sessionKey) {
       continue;
     }
@@ -1262,6 +1266,10 @@ export const chatHandlers: GatewayRequestHandlers = {
       respond(true, { ok: true, aborted: false, runIds: [] });
       return;
     }
+    if (active.kind !== "chat") {
+      respond(true, { ok: true, aborted: false, runIds: [] });
+      return;
+    }
     if (active.sessionKey !== rawSessionKey) {
       respond(
         false,
@@ -1444,7 +1452,8 @@ export const chatHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const cached = context.dedupe.get(`chat:${clientRunId}`);
+    const dedupeKey = `chat:${clientRunId}`;
+    const cached = context.dedupe.get(dedupeKey);
     if (cached) {
       respond(cached.ok, cached.payload, cached.error, {
         cached: true,
@@ -1454,16 +1463,28 @@ export const chatHandlers: GatewayRequestHandlers = {
 
     const activeExisting = context.chatAbortControllers.get(clientRunId);
     if (activeExisting) {
-      respond(true, { runId: clientRunId, status: "in_flight" as const }, undefined, {
-        cached: true,
-        runId: clientRunId,
-      });
+      if (activeExisting.kind === "chat") {
+        respond(true, { runId: clientRunId, status: "in_flight" as const }, undefined, {
+          cached: true,
+          runId: clientRunId,
+        });
+        return;
+      }
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "runId already in use by another active operation"),
+        {
+          runId: clientRunId,
+        },
+      );
       return;
     }
 
     try {
       const abortController = new AbortController();
       context.chatAbortControllers.set(clientRunId, {
+        kind: "chat",
         controller: abortController,
         sessionId: entry?.sessionId ?? clientRunId,
         sessionKey: rawSessionKey,
@@ -1471,6 +1492,18 @@ export const chatHandlers: GatewayRequestHandlers = {
         expiresAtMs: resolveChatRunExpiresAtMs({ now, timeoutMs }),
         ownerConnId: normalizeOptionalText(client?.connId),
         ownerDeviceId: normalizeOptionalText(client?.connect?.device?.id),
+      });
+      setGatewayDedupeEntry({
+        dedupe: context.dedupe,
+        key: dedupeKey,
+        entry: {
+          ts: Date.now(),
+          ok: true,
+          payload: {
+            runId: clientRunId,
+            status: "in_flight" as const,
+          },
+        },
       });
       const ackPayload = {
         runId: clientRunId,
@@ -1742,7 +1775,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           }
           setGatewayDedupeEntry({
             dedupe: context.dedupe,
-            key: `chat:${clientRunId}`,
+            key: dedupeKey,
             entry: {
               ts: Date.now(),
               ok: true,
@@ -1764,7 +1797,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));
           setGatewayDedupeEntry({
             dedupe: context.dedupe,
-            key: `chat:${clientRunId}`,
+            key: dedupeKey,
             entry: {
               ts: Date.now(),
               ok: false,
@@ -1784,7 +1817,7 @@ export const chatHandlers: GatewayRequestHandlers = {
           });
         })
         .finally(() => {
-          context.chatAbortControllers.delete(clientRunId);
+          clearTrackedRunEntryIfOwned(context.chatAbortControllers, clientRunId, abortController);
         });
     } catch (err) {
       const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));
@@ -1795,7 +1828,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       };
       setGatewayDedupeEntry({
         dedupe: context.dedupe,
-        key: `chat:${clientRunId}`,
+        key: dedupeKey,
         entry: {
           ts: Date.now(),
           ok: false,
