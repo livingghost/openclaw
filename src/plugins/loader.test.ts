@@ -1514,6 +1514,125 @@ module.exports = { id: "skipped-scoped-only", register() { throw new Error("skip
     }
   });
 
+  it("uses provider-only mode instead of setup-runtime when resolving providers", () => {
+    useNoBundledPlugins();
+    const pluginDir = makeTempDir();
+    const fullMarker = path.join(pluginDir, "full-provider-loaded.txt");
+    const setupMarker = path.join(pluginDir, "setup-provider-loaded.txt");
+    fs.writeFileSync(
+      path.join(pluginDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "@openclaw/setup-runtime-provider-only-test",
+          openclaw: {
+            extensions: ["./index.cjs"],
+            setupEntry: "./setup-entry.cjs",
+            startup: {
+              deferConfiguredChannelFullLoadUntilAfterListen: true,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(pluginDir, "openclaw.plugin.json"),
+      JSON.stringify(
+        {
+          id: "setup-runtime-provider-only-test",
+          configSchema: EMPTY_PLUGIN_SCHEMA,
+          channels: ["setup-runtime-provider-only-test"],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(pluginDir, "index.cjs"),
+      `require("node:fs").writeFileSync(${JSON.stringify(fullMarker)}, "loaded", "utf-8");
+module.exports = {
+  id: "setup-runtime-provider-only-test",
+  register(api) {
+    api.registerProvider({
+      id: "setup-runtime-provider-only",
+      label: "Setup Runtime Provider Only",
+      auth: [],
+    });
+    api.registerChannel({
+      plugin: {
+        id: "setup-runtime-provider-only-test",
+        meta: {
+          id: "setup-runtime-provider-only-test",
+          label: "Setup Runtime Provider Only",
+          selectionLabel: "Setup Runtime Provider Only",
+          docsPath: "/channels/setup-runtime-provider-only-test",
+          blurb: "full entry should only register providers in provider-only mode",
+        },
+        capabilities: { chatTypes: ["direct"] },
+        config: {
+          listAccountIds: () => ["default"],
+          resolveAccount: () => ({ accountId: "default", token: "configured" }),
+        },
+        outbound: { deliveryMode: "direct" },
+      },
+    });
+  },
+};`,
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(pluginDir, "setup-entry.cjs"),
+      `require("node:fs").writeFileSync(${JSON.stringify(setupMarker)}, "loaded", "utf-8");
+module.exports = {
+  plugin: {
+    id: "setup-runtime-provider-only-test",
+    meta: {
+      id: "setup-runtime-provider-only-test",
+      label: "Setup Runtime Provider Only",
+      selectionLabel: "Setup Runtime Provider Only",
+      docsPath: "/channels/setup-runtime-provider-only-test",
+      blurb: "setup runtime entry should not run in provider-only mode",
+    },
+    capabilities: { chatTypes: ["direct"] },
+    config: {
+      listAccountIds: () => ["default"],
+      resolveAccount: () => ({ accountId: "default", token: "configured" }),
+    },
+    outbound: { deliveryMode: "direct" },
+  },
+};`,
+      "utf-8",
+    );
+
+    const snapshot = loadOpenClawPlugins({
+      cache: false,
+      providerOnly: true,
+      preferSetupRuntimeForChannelPlugins: true,
+      config: {
+        channels: {
+          "setup-runtime-provider-only-test": {
+            enabled: true,
+            token: "configured",
+          },
+        },
+        plugins: {
+          load: { paths: [pluginDir] },
+          allow: ["setup-runtime-provider-only-test"],
+        },
+      },
+    });
+
+    expect(snapshot.providers.map((entry) => entry.provider.id)).toEqual([
+      "setup-runtime-provider-only",
+    ]);
+    expect(snapshot.channels).toEqual([]);
+    expect(fs.existsSync(fullMarker)).toBe(true);
+    expect(fs.existsSync(setupMarker)).toBe(false);
+  });
+
   it("re-initializes global hook runner when serving registry from cache", () => {
     process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = "/nonexistent/bundled/plugins";
     const plugin = writePlugin({

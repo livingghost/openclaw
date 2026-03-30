@@ -1095,13 +1095,16 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         ? "setup-only"
         : null;
 
-    // When providerOnly is set, downgrade "full" to "provider-only" so plugins
-    // skip expensive tool, hook, command, and channel registration. This is
-    // used by resolvePluginProviders which only needs provider metadata.
+    // When providerOnly is set, downgrade runtime-bearing modes to
+    // "provider-only" so plugins skip expensive tool, hook, command, and
+    // channel registration while still loading the full plugin entry needed to
+    // surface provider metadata. This is used by resolvePluginProviders which
+    // only needs provider metadata.
     // Note: !shouldActivate alone is NOT sufficient — channel setup snapshot
     // loads also use activate:false but need registerChannel to work.
     const registrationMode =
-      options.providerOnly && baseRegistrationMode === "full"
+      options.providerOnly &&
+      (baseRegistrationMode === "full" || baseRegistrationMode === "setup-runtime")
         ? "provider-only"
         : baseRegistrationMode;
 
