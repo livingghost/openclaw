@@ -925,7 +925,11 @@ export async function readLatestSessionUsageFromTranscriptAsync(
       return null;
     }
     const maxLineChars = getSessionUsageTranscriptMaxLineChars();
-    const stream = fileHandle.createReadStream({ encoding: "utf-8" });
+    const stream = fileHandle.createReadStream({
+      encoding: "utf-8",
+      start: 0,
+      end: stat.size - 1,
+    });
     const result = await readLatestSessionUsageFromStream({
       stream,
       maxLineChars,

@@ -1580,6 +1580,7 @@ export async function prewarmSessionUsageCache(params: {
   const resolvedStorePath = storePath === "(multiple)" ? undefined : storePath;
   const entries = Object.entries(store);
   const toWarm: Array<{
+    warmKey: string;
     sessionId: string;
     storePath?: string;
     sessionFile?: string;
@@ -1603,6 +1604,7 @@ export async function prewarmSessionUsageCache(params: {
     });
     // Always warm title cache; only warm usage cache when metadata is missing.
     toWarm.push({
+      warmKey: key,
       sessionId: entry.sessionId,
       storePath: sourceStorePaths.get(key) ?? resolvedStorePath,
       sessionFile: entry.sessionFile,
@@ -1619,15 +1621,15 @@ export async function prewarmSessionUsageCache(params: {
   const usageCount = toWarm.filter((t) => t.needsUsage).length;
   const currentMax = getSessionUsageCacheMaxEntries();
   const currentTitleMax = getSessionTitleFieldsCacheMaxEntries();
-  let usagePrewarmSessionIds: Set<string> | undefined;
-  let titlePrewarmSessionIds: Set<string> | undefined;
+  let usagePrewarmKeys: Set<string> | undefined;
+  let titlePrewarmKeys: Set<string> | undefined;
   if (usageCount > currentMax) {
-    usagePrewarmSessionIds = new Set(
+    usagePrewarmKeys = new Set(
       toWarm
         .filter((t) => t.needsUsage)
         .toSorted((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, currentMax)
-        .map((item) => item.sessionId),
+        .map((item) => item.warmKey),
     );
     log.warn(
       `[sessions] prewarm: ${usageCount} sessions need usage warming but usageCacheMaxEntries is ${currentMax}. ` +
@@ -1635,20 +1637,20 @@ export async function prewarmSessionUsageCache(params: {
         `Consider increasing gateway.sessionsList.usageCacheMaxEntries.`,
     );
   }
-  const plannedUsageCount = usagePrewarmSessionIds?.size ?? usageCount;
+  const plannedUsageCount = usagePrewarmKeys?.size ?? usageCount;
   if (toWarm.length > currentTitleMax) {
-    titlePrewarmSessionIds = new Set(
+    titlePrewarmKeys = new Set(
       toWarm
         .toSorted((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, currentTitleMax)
-        .map((item) => item.sessionId),
+        .map((item) => item.warmKey),
     );
     log.warn(
       `[sessions] prewarm: ${toWarm.length} sessions need title warming but the title cache only retains ${currentTitleMax}. ` +
         `Prewarm will only warm the ${currentTitleMax} most recently updated title entries.`,
     );
   }
-  const plannedTitleCount = titlePrewarmSessionIds?.size ?? toWarm.length;
+  const plannedTitleCount = titlePrewarmKeys?.size ?? toWarm.length;
 
   log.info(
     `[sessions] prewarm: warming ${toWarm.length} session(s) (${plannedUsageCount} usage + ${plannedTitleCount} title, concurrency=${concurrency})`,
@@ -1661,10 +1663,7 @@ export async function prewarmSessionUsageCache(params: {
 
   const tasks = toWarm.map((item) => async () => {
     // Warm usage cache (async I/O)
-    if (
-      item.needsUsage &&
-      (!usagePrewarmSessionIds || usagePrewarmSessionIds.has(item.sessionId))
-    ) {
+    if (item.needsUsage && (!usagePrewarmKeys || usagePrewarmKeys.has(item.warmKey))) {
       const result = await readLatestSessionUsageFromTranscriptAsync(
         item.sessionId,
         item.storePath,
@@ -1678,7 +1677,7 @@ export async function prewarmSessionUsageCache(params: {
     }
     // Warm title cache with bounded async head/tail reads so background prewarm
     // does not serialize thousands of synchronous file reads on the event loop.
-    if (!titlePrewarmSessionIds || titlePrewarmSessionIds.has(item.sessionId)) {
+    if (!titlePrewarmKeys || titlePrewarmKeys.has(item.warmKey)) {
       await readSessionTitleFieldsFromTranscriptAsync(
         item.sessionId,
         item.storePath,

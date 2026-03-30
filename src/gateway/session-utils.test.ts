@@ -2631,6 +2631,47 @@ describe("prewarmSessionUsageCache", () => {
     );
   });
 
+  test("keys capped usage prewarm by canonical store entry instead of sessionId", async () => {
+    const storePath = path.join(tmpDir, "sessions.json");
+    const now = Date.now();
+    const store: Record<string, SessionEntry> = {
+      "agent:main:main": {
+        sessionId: "shared-session",
+        updatedAt: now - 3_000,
+        totalTokens: 0,
+        totalTokensFresh: false,
+      } as SessionEntry,
+      "agent:ops:main": {
+        sessionId: "shared-session",
+        updatedAt: now - 1_000,
+        totalTokens: 0,
+        totalTokensFresh: false,
+      } as SessionEntry,
+      "agent:aux:main": {
+        sessionId: "unique-session",
+        updatedAt: now - 2_000,
+        totalTokens: 0,
+        totalTokensFresh: false,
+      } as SessionEntry,
+    };
+    writeStore(storePath, store);
+    writeTranscript(tmpDir, "shared-session", 100);
+    writeTranscript(tmpDir, "unique-session", 200);
+
+    const log = { info: vi.fn(), warn: vi.fn() };
+    const cfg = {
+      session: { store: storePath },
+      gateway: { sessionsList: { prewarmUsageCache: true, usageCacheMaxEntries: 2 } },
+    } as OpenClawConfig;
+
+    await prewarmSessionUsageCache({ cfg, log });
+
+    const infoMessages = log.info.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(infoMessages.some((m: string) => m.includes("usage=2") && m.includes("title=3"))).toBe(
+      true,
+    );
+  });
+
   test("caps title prewarm to the most recently updated title-cache-sized subset", async () => {
     const storePath = path.join(tmpDir, "sessions.json");
     const now = Date.now();

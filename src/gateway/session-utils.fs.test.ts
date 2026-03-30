@@ -1118,6 +1118,46 @@ describe("readLatestSessionUsageFromTranscriptAsync", () => {
     expect(statSpy).not.toHaveBeenCalled();
     statSpy.mockRestore();
   });
+
+  test("bounds async transcript streaming to the size checked from the open file handle", async () => {
+    const sessionId = "usage-async-bounded-stream";
+    const transcriptPath = writeTranscript(tmpDir, sessionId, [
+      { type: "session", version: 1, id: sessionId },
+      {
+        message: {
+          role: "assistant",
+          provider: "openai",
+          model: "gpt-5.4",
+          usage: { input: 100, output: 50, cost: { total: 0.001 } },
+        },
+      },
+    ]);
+
+    let capturedOptions: fs.CreateReadStreamOptions | undefined;
+    const originalOpen = fs.promises.open.bind(fs.promises);
+    const openSpy = vi.spyOn(fs.promises, "open").mockImplementation(async (...args) => {
+      const fileHandle = await originalOpen(...(args as Parameters<typeof fs.promises.open>));
+      const originalCreateReadStream = fileHandle.createReadStream.bind(fileHandle);
+      vi.spyOn(fileHandle, "createReadStream").mockImplementation((options) => {
+        capturedOptions =
+          typeof options === "object" && options ? { ...options } : (options as never);
+        return originalCreateReadStream(options);
+      });
+      return fileHandle;
+    });
+    const snapshot = await readLatestSessionUsageFromTranscriptAsync(sessionId, storePath);
+
+    expect(snapshot).toMatchObject({ inputTokens: 100, outputTokens: 50 });
+    expect(capturedOptions).toEqual(
+      expect.objectContaining({
+        encoding: "utf-8",
+        start: 0,
+        end: fs.statSync(transcriptPath).size - 1,
+      }),
+    );
+
+    openSpy.mockRestore();
+  });
 });
 
 describe("session usage transcript guardrails", () => {
