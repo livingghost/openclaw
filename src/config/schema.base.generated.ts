@@ -10818,6 +10818,35 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
             },
             additionalProperties: false,
           },
+          sessionsList: {
+            type: "object",
+            properties: {
+              usageCacheMaxEntries: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 100000,
+              },
+              transcriptUsageMaxBytes: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 134217728,
+              },
+              transcriptUsageMaxLineChars: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 8388608,
+              },
+              prewarmUsageCache: {
+                type: "boolean",
+              },
+              prewarmConcurrency: {
+                type: "integer",
+                minimum: 1,
+                maximum: 64,
+              },
+            },
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
       },
@@ -12118,6 +12147,36 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       label: "Gateway Tool Denylist",
       help: "Explicit gateway-level tool denylist to block risky tools even if lower-level policies allow them. Use deny rules for emergency response and defense-in-depth hardening.",
       tags: ["access", "network"],
+    },
+    "gateway.sessionsList": {
+      label: "Gateway Sessions List",
+      help: "Gateway sessions.list performance tuning for transcript-derived metadata. Leave defaults alone unless large session inventories cause sessions.list slowdowns.",
+      tags: ["network", "storage"],
+    },
+    "gateway.sessionsList.usageCacheMaxEntries": {
+      label: "Gateway Sessions List Usage Cache Max Entries",
+      help: "Maximum entries in the in-memory usage cache for transcript reads. Default: 5000.",
+      tags: ["network", "performance", "storage"],
+    },
+    "gateway.sessionsList.transcriptUsageMaxBytes": {
+      label: "Gateway Sessions List Transcript Usage Max Bytes",
+      help: "Maximum transcript size scanned when deriving usage from session JSONL files. Default: 16 MiB.",
+      tags: ["network", "performance", "storage"],
+    },
+    "gateway.sessionsList.transcriptUsageMaxLineChars": {
+      label: "Gateway Sessions List Transcript Usage Max Line Chars",
+      help: "Maximum single-line length accepted when deriving usage from session JSONL files. Default: 1 MiB.",
+      tags: ["network", "performance", "storage"],
+    },
+    "gateway.sessionsList.prewarmUsageCache": {
+      label: "Gateway Sessions List Prewarm Usage Cache",
+      help: "Pre-warm the usage cache at gateway startup by reading transcripts for sessions lacking stored usage metadata. Default: false.",
+      tags: ["network", "storage"],
+    },
+    "gateway.sessionsList.prewarmConcurrency": {
+      label: "Gateway Sessions List Prewarm Concurrency",
+      help: "Maximum concurrency for the prewarm background task. Default: 16.",
+      tags: ["network", "performance", "storage"],
     },
     "gateway.channelHealthCheckMinutes": {
       label: "Gateway Channel Health Check Interval (min)",

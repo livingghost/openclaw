@@ -140,6 +140,7 @@ import { loadGatewayTlsRuntime } from "./server/tls.js";
 import { resolveSessionKeyForTranscriptFile } from "./session-transcript-key.js";
 import {
   attachOpenClawTranscriptMeta,
+  applyConfiguredSessionUsageGuardrails,
   loadGatewaySessionRow,
   loadSessionEntry,
   readSessionMessages,
@@ -709,6 +710,9 @@ export async function startGatewayServer(
     channelManager,
     startedAt: serverStartedAt,
   });
+  // Apply sessions.list cache/transcript guardrails before runtime-state
+  // creation binds HTTP listeners so early requests never see default limits.
+  applyConfiguredSessionUsageGuardrails(cfgAtStart);
   const {
     canvasHost,
     releasePluginRouteRegistry,

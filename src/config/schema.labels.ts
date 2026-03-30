@@ -85,6 +85,14 @@ export const FIELD_LABELS: Record<string, string> = {
   "gateway.tools": "Gateway Tool Exposure Policy",
   "gateway.tools.allow": "Gateway Tool Allowlist",
   "gateway.tools.deny": "Gateway Tool Denylist",
+  "gateway.sessionsList": "Gateway Sessions List",
+  "gateway.sessionsList.usageCacheMaxEntries": "Gateway Sessions List Usage Cache Max Entries",
+  "gateway.sessionsList.transcriptUsageMaxBytes":
+    "Gateway Sessions List Transcript Usage Max Bytes",
+  "gateway.sessionsList.transcriptUsageMaxLineChars":
+    "Gateway Sessions List Transcript Usage Max Line Chars",
+  "gateway.sessionsList.prewarmUsageCache": "Gateway Sessions List Prewarm Usage Cache",
+  "gateway.sessionsList.prewarmConcurrency": "Gateway Sessions List Prewarm Concurrency",
   "gateway.channelHealthCheckMinutes": "Gateway Channel Health Check Interval (min)",
   "gateway.channelStaleEventThresholdMinutes": "Gateway Channel Stale Event Threshold (min)",
   "gateway.channelMaxRestartsPerHour": "Gateway Channel Max Restarts Per Hour",

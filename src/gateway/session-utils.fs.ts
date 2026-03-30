@@ -190,28 +190,20 @@ export function readSessionTitleFieldsFromTranscript(
     return { firstUserMessage: null, lastMessagePreview: null };
   }
 
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(filePath);
-  } catch {
-    return { firstUserMessage: null, lastMessagePreview: null };
-  }
-
   const cacheKey = readSessionTitleFieldsCacheKey(filePath, opts);
-  const cached = getCachedSessionTitleFields(cacheKey, stat);
-  if (cached) {
-    return cached;
-  }
-
-  if (stat.size === 0) {
-    const empty = { firstUserMessage: null, lastMessagePreview: null };
-    setCachedSessionTitleFields(cacheKey, stat, empty);
-    return empty;
-  }
-
   let fd: number | null = null;
   try {
     fd = fs.openSync(filePath, "r");
+    const stat = fs.fstatSync(fd);
+    const cached = getCachedSessionTitleFields(cacheKey, stat);
+    if (cached) {
+      return cached;
+    }
+    if (stat.size === 0) {
+      const empty = { firstUserMessage: null, lastMessagePreview: null };
+      setCachedSessionTitleFields(cacheKey, stat, empty);
+      return empty;
+    }
     const size = stat.size;
 
     // Head (first user message)
@@ -249,6 +241,67 @@ export function readSessionTitleFieldsFromTranscript(
   }
 }
 
+export async function readSessionTitleFieldsFromTranscriptAsync(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile?: string,
+  agentId?: string,
+  opts?: { includeInterSession?: boolean },
+): Promise<SessionTitleFields> {
+  const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
+  const filePath = candidates.find((p) => fs.existsSync(p));
+  if (!filePath) {
+    return { firstUserMessage: null, lastMessagePreview: null };
+  }
+
+  const cacheKey = readSessionTitleFieldsCacheKey(filePath, opts);
+  let fileHandle: fs.promises.FileHandle | null = null;
+  try {
+    fileHandle = await fs.promises.open(filePath, "r");
+    const stat = await fileHandle.stat();
+    const cached = getCachedSessionTitleFields(cacheKey, stat);
+    if (cached) {
+      return cached;
+    }
+    if (stat.size === 0) {
+      const empty = { firstUserMessage: null, lastMessagePreview: null };
+      setCachedSessionTitleFields(cacheKey, stat, empty);
+      return empty;
+    }
+    const size = stat.size;
+
+    let firstUserMessage: string | null = null;
+    try {
+      const chunk = await readTranscriptHeadChunkAsync(fileHandle);
+      if (chunk) {
+        firstUserMessage = extractFirstUserMessageFromTranscriptChunk(chunk, opts);
+      }
+    } catch {
+      // ignore head read errors
+    }
+
+    let lastMessagePreview: string | null = null;
+    try {
+      lastMessagePreview = await readLastMessagePreviewFromOpenTranscriptAsync({
+        fileHandle,
+        size,
+      });
+    } catch {
+      // ignore tail read errors
+    }
+
+    const result = { firstUserMessage, lastMessagePreview };
+    setCachedSessionTitleFields(cacheKey, stat, result);
+    return result;
+  } catch {
+    return { firstUserMessage: null, lastMessagePreview: null };
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close().catch(() => {});
+    }
+  }
+}
+
 function extractTextFromContent(content: TranscriptMessage["content"]): string | null {
   if (typeof content === "string") {
     const normalized = stripInlineDirectiveTagsForDisplay(content).text.trim();
@@ -274,6 +327,18 @@ function extractTextFromContent(content: TranscriptMessage["content"]): string |
 function readTranscriptHeadChunk(fd: number, maxBytes = 8192): string | null {
   const buf = Buffer.alloc(maxBytes);
   const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
+  if (bytesRead <= 0) {
+    return null;
+  }
+  return buf.toString("utf-8", 0, bytesRead);
+}
+
+async function readTranscriptHeadChunkAsync(
+  fileHandle: fs.promises.FileHandle,
+  maxBytes = 8192,
+): Promise<string | null> {
+  const buf = Buffer.alloc(maxBytes);
+  const { bytesRead } = await fileHandle.read(buf, 0, buf.length, 0);
   if (bytesRead <= 0) {
     return null;
   }
@@ -390,6 +455,38 @@ function readLastMessagePreviewFromOpenTranscript(params: {
   return null;
 }
 
+async function readLastMessagePreviewFromOpenTranscriptAsync(params: {
+  fileHandle: fs.promises.FileHandle;
+  size: number;
+}): Promise<string | null> {
+  const readStart = Math.max(0, params.size - LAST_MSG_MAX_BYTES);
+  const readLen = Math.min(params.size, LAST_MSG_MAX_BYTES);
+  const buf = Buffer.alloc(readLen);
+  await params.fileHandle.read(buf, 0, readLen, readStart);
+
+  const chunk = buf.toString("utf-8");
+  const lines = chunk.split(/\r?\n/).filter((l) => l.trim());
+  const tailLines = lines.slice(-LAST_MSG_MAX_LINES);
+
+  for (let i = tailLines.length - 1; i >= 0; i--) {
+    const line = tailLines[i];
+    try {
+      const parsed = JSON.parse(line);
+      const msg = parsed?.message as TranscriptMessage | undefined;
+      if (msg?.role !== "user" && msg?.role !== "assistant") {
+        continue;
+      }
+      const text = extractTextFromContent(msg.content);
+      if (text) {
+        return text;
+      }
+    } catch {
+      // skip malformed
+    }
+  }
+  return null;
+}
+
 export function readLastMessagePreviewFromTranscript(
   sessionId: string,
   storePath: string | undefined,
@@ -439,128 +536,289 @@ function resolvePositiveUsageNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+type TranscriptUsageAccumulator = {
+  snapshot: SessionTranscriptUsageSnapshot;
+  sawSnapshot: boolean;
+  inputTokens: number;
+  outputTokens: number;
+  cacheRead: number;
+  cacheWrite: number;
+  sawInputTokens: boolean;
+  sawOutputTokens: boolean;
+  sawCacheRead: boolean;
+  sawCacheWrite: boolean;
+  costUsdTotal: number;
+  sawCost: boolean;
+};
+
+function createTranscriptUsageAccumulator(): TranscriptUsageAccumulator {
+  return {
+    snapshot: {},
+    sawSnapshot: false,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    sawInputTokens: false,
+    sawOutputTokens: false,
+    sawCacheRead: false,
+    sawCacheWrite: false,
+    costUsdTotal: 0,
+    sawCost: false,
+  };
+}
+
+function accumulateTranscriptUsageLine(state: TranscriptUsageAccumulator, line: string): void {
+  if (line.trim().length === 0) {
+    return;
+  }
+  try {
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    const message =
+      parsed.message && typeof parsed.message === "object" && !Array.isArray(parsed.message)
+        ? (parsed.message as Record<string, unknown>)
+        : undefined;
+    if (!message) {
+      return;
+    }
+    const role = typeof message.role === "string" ? message.role : undefined;
+    if (role && role !== "assistant") {
+      return;
+    }
+    const usageRaw =
+      message.usage && typeof message.usage === "object" && !Array.isArray(message.usage)
+        ? message.usage
+        : parsed.usage && typeof parsed.usage === "object" && !Array.isArray(parsed.usage)
+          ? parsed.usage
+          : undefined;
+    const usage = normalizeUsage(usageRaw);
+    const totalTokens = resolvePositiveUsageNumber(deriveSessionTotalTokens({ usage }));
+    const costUsd = extractTranscriptUsageCost(usageRaw);
+    const modelProvider =
+      typeof message.provider === "string"
+        ? message.provider.trim()
+        : typeof parsed.provider === "string"
+          ? parsed.provider.trim()
+          : undefined;
+    const model =
+      typeof message.model === "string"
+        ? message.model.trim()
+        : typeof parsed.model === "string"
+          ? parsed.model.trim()
+          : undefined;
+    const isDeliveryMirror = modelProvider === "openclaw" && model === "delivery-mirror";
+    const hasMeaningfulUsage =
+      hasNonzeroUsage(usage) ||
+      typeof totalTokens === "number" ||
+      (typeof costUsd === "number" && Number.isFinite(costUsd));
+    const hasModelIdentity = Boolean(modelProvider || model);
+    if (!hasMeaningfulUsage && !hasModelIdentity) {
+      return;
+    }
+    if (isDeliveryMirror && !hasMeaningfulUsage) {
+      return;
+    }
+
+    state.sawSnapshot = true;
+    if (!isDeliveryMirror) {
+      if (modelProvider) {
+        state.snapshot.modelProvider = modelProvider;
+      }
+      if (model) {
+        state.snapshot.model = model;
+      }
+    }
+    if (typeof usage?.input === "number" && Number.isFinite(usage.input)) {
+      state.inputTokens += usage.input;
+      state.sawInputTokens = true;
+    }
+    if (typeof usage?.output === "number" && Number.isFinite(usage.output)) {
+      state.outputTokens += usage.output;
+      state.sawOutputTokens = true;
+    }
+    if (typeof usage?.cacheRead === "number" && Number.isFinite(usage.cacheRead)) {
+      state.cacheRead += usage.cacheRead;
+      state.sawCacheRead = true;
+    }
+    if (typeof usage?.cacheWrite === "number" && Number.isFinite(usage.cacheWrite)) {
+      state.cacheWrite += usage.cacheWrite;
+      state.sawCacheWrite = true;
+    }
+    if (typeof totalTokens === "number") {
+      state.snapshot.totalTokens = totalTokens;
+      state.snapshot.totalTokensFresh = true;
+    }
+    if (typeof costUsd === "number" && Number.isFinite(costUsd)) {
+      state.costUsdTotal += costUsd;
+      state.sawCost = true;
+    }
+  } catch {
+    // skip malformed lines
+  }
+}
+
+function finalizeTranscriptUsageAccumulator(
+  state: TranscriptUsageAccumulator,
+): SessionTranscriptUsageSnapshot | null {
+  if (!state.sawSnapshot) {
+    return null;
+  }
+  if (state.sawInputTokens) {
+    state.snapshot.inputTokens = state.inputTokens;
+  }
+  if (state.sawOutputTokens) {
+    state.snapshot.outputTokens = state.outputTokens;
+  }
+  if (state.sawCacheRead) {
+    state.snapshot.cacheRead = state.cacheRead;
+  }
+  if (state.sawCacheWrite) {
+    state.snapshot.cacheWrite = state.cacheWrite;
+  }
+  if (state.sawCost) {
+    state.snapshot.costUsd = state.costUsdTotal;
+  }
+  return state.snapshot;
+}
+
 function extractLatestUsageFromTranscriptChunk(
   chunk: string,
 ): SessionTranscriptUsageSnapshot | null {
-  const lines = chunk.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  const snapshot: SessionTranscriptUsageSnapshot = {};
-  let sawSnapshot = false;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let cacheRead = 0;
-  let cacheWrite = 0;
-  let sawInputTokens = false;
-  let sawOutputTokens = false;
-  let sawCacheRead = false;
-  let sawCacheWrite = false;
-  let costUsdTotal = 0;
-  let sawCost = false;
-
-  for (const line of lines) {
-    try {
-      const parsed = JSON.parse(line) as Record<string, unknown>;
-      const message =
-        parsed.message && typeof parsed.message === "object" && !Array.isArray(parsed.message)
-          ? (parsed.message as Record<string, unknown>)
-          : undefined;
-      if (!message) {
-        continue;
-      }
-      const role = typeof message.role === "string" ? message.role : undefined;
-      if (role && role !== "assistant") {
-        continue;
-      }
-      const usageRaw =
-        message.usage && typeof message.usage === "object" && !Array.isArray(message.usage)
-          ? message.usage
-          : parsed.usage && typeof parsed.usage === "object" && !Array.isArray(parsed.usage)
-            ? parsed.usage
-            : undefined;
-      const usage = normalizeUsage(usageRaw);
-      const totalTokens = resolvePositiveUsageNumber(deriveSessionTotalTokens({ usage }));
-      const costUsd = extractTranscriptUsageCost(usageRaw);
-      const modelProvider =
-        typeof message.provider === "string"
-          ? message.provider.trim()
-          : typeof parsed.provider === "string"
-            ? parsed.provider.trim()
-            : undefined;
-      const model =
-        typeof message.model === "string"
-          ? message.model.trim()
-          : typeof parsed.model === "string"
-            ? parsed.model.trim()
-            : undefined;
-      const isDeliveryMirror = modelProvider === "openclaw" && model === "delivery-mirror";
-      const hasMeaningfulUsage =
-        hasNonzeroUsage(usage) ||
-        typeof totalTokens === "number" ||
-        (typeof costUsd === "number" && Number.isFinite(costUsd));
-      const hasModelIdentity = Boolean(modelProvider || model);
-      if (!hasMeaningfulUsage && !hasModelIdentity) {
-        continue;
-      }
-      if (isDeliveryMirror && !hasMeaningfulUsage) {
-        continue;
-      }
-
-      sawSnapshot = true;
-      if (!isDeliveryMirror) {
-        if (modelProvider) {
-          snapshot.modelProvider = modelProvider;
-        }
-        if (model) {
-          snapshot.model = model;
-        }
-      }
-      if (typeof usage?.input === "number" && Number.isFinite(usage.input)) {
-        inputTokens += usage.input;
-        sawInputTokens = true;
-      }
-      if (typeof usage?.output === "number" && Number.isFinite(usage.output)) {
-        outputTokens += usage.output;
-        sawOutputTokens = true;
-      }
-      if (typeof usage?.cacheRead === "number" && Number.isFinite(usage.cacheRead)) {
-        cacheRead += usage.cacheRead;
-        sawCacheRead = true;
-      }
-      if (typeof usage?.cacheWrite === "number" && Number.isFinite(usage.cacheWrite)) {
-        cacheWrite += usage.cacheWrite;
-        sawCacheWrite = true;
-      }
-      if (typeof totalTokens === "number") {
-        snapshot.totalTokens = totalTokens;
-        snapshot.totalTokensFresh = true;
-      }
-      if (typeof costUsd === "number" && Number.isFinite(costUsd)) {
-        costUsdTotal += costUsd;
-        sawCost = true;
-      }
-    } catch {
-      // skip malformed lines
+  const state = createTranscriptUsageAccumulator();
+  const maxLineChars = getSessionUsageTranscriptMaxLineChars();
+  for (const line of chunk.split(/\r?\n/)) {
+    if (line.length > maxLineChars) {
+      return null;
     }
+    accumulateTranscriptUsageLine(state, line);
   }
+  return finalizeTranscriptUsageAccumulator(state);
+}
 
-  if (!sawSnapshot) {
-    return null;
+type SessionUsageCacheEntry = {
+  result: SessionTranscriptUsageSnapshot | null;
+  mtimeMs: number;
+  size: number;
+};
+
+const sessionUsageCache = new Map<string, SessionUsageCacheEntry>();
+const DEFAULT_SESSION_USAGE_CACHE_MAX_ENTRIES = 5000;
+export const MAX_SESSION_USAGE_CACHE_MAX_ENTRIES = 100_000;
+const DEFAULT_SESSION_USAGE_TRANSCRIPT_MAX_BYTES = 16 * 1024 * 1024;
+const DEFAULT_SESSION_USAGE_TRANSCRIPT_MAX_LINE_CHARS = 1 * 1024 * 1024;
+export const MAX_SESSION_USAGE_TRANSCRIPT_BYTES = 128 * 1024 * 1024;
+export const MAX_SESSION_USAGE_TRANSCRIPT_LINE_CHARS = 8 * 1024 * 1024;
+let configuredSessionUsageCacheMaxEntries: number | undefined;
+let configuredSessionUsageTranscriptMaxBytes: number | undefined;
+let configuredSessionUsageTranscriptMaxLineChars: number | undefined;
+
+export function applyConfiguredSessionUsageGuardrails(config: {
+  gateway?: {
+    sessionsList?: {
+      usageCacheMaxEntries?: number;
+      transcriptUsageMaxBytes?: number;
+      transcriptUsageMaxLineChars?: number;
+    };
+  };
+}) {
+  setSessionUsageCacheMaxEntries(config.gateway?.sessionsList?.usageCacheMaxEntries);
+  setSessionUsageTranscriptMaxBytes(config.gateway?.sessionsList?.transcriptUsageMaxBytes);
+  setSessionUsageTranscriptMaxLineChars(config.gateway?.sessionsList?.transcriptUsageMaxLineChars);
+}
+
+export function setSessionUsageCacheMaxEntries(value: number | undefined) {
+  configuredSessionUsageCacheMaxEntries =
+    typeof value === "number" && Number.isFinite(value) && value > 0
+      ? Math.min(value, MAX_SESSION_USAGE_CACHE_MAX_ENTRIES)
+      : undefined;
+  // Trim cache immediately when the limit is lowered so memory is released
+  // on in-process gateway restarts without waiting for new writes.
+  const maxEntries = getSessionUsageCacheMaxEntries();
+  while (sessionUsageCache.size > maxEntries) {
+    const oldestKey = sessionUsageCache.keys().next().value;
+    if (typeof oldestKey !== "string" || !oldestKey) {
+      break;
+    }
+    sessionUsageCache.delete(oldestKey);
   }
-  if (sawInputTokens) {
-    snapshot.inputTokens = inputTokens;
+}
+
+export function getSessionUsageCacheMaxEntries(): number {
+  return configuredSessionUsageCacheMaxEntries ?? DEFAULT_SESSION_USAGE_CACHE_MAX_ENTRIES;
+}
+
+export function getSessionTitleFieldsCacheMaxEntries(): number {
+  return MAX_SESSION_TITLE_FIELDS_CACHE_MAX_ENTRIES;
+}
+
+export function setSessionUsageTranscriptMaxBytes(value: number | undefined) {
+  const nextValue =
+    typeof value === "number" && Number.isFinite(value) && value > 0
+      ? Math.min(value, MAX_SESSION_USAGE_TRANSCRIPT_BYTES)
+      : undefined;
+  if (configuredSessionUsageTranscriptMaxBytes !== nextValue) {
+    configuredSessionUsageTranscriptMaxBytes = nextValue;
+    sessionUsageCache.clear();
   }
-  if (sawOutputTokens) {
-    snapshot.outputTokens = outputTokens;
+}
+
+export function getSessionUsageTranscriptMaxBytes(): number {
+  return configuredSessionUsageTranscriptMaxBytes ?? DEFAULT_SESSION_USAGE_TRANSCRIPT_MAX_BYTES;
+}
+
+export function setSessionUsageTranscriptMaxLineChars(value: number | undefined) {
+  const nextValue =
+    typeof value === "number" && Number.isFinite(value) && value > 0
+      ? Math.min(value, MAX_SESSION_USAGE_TRANSCRIPT_LINE_CHARS)
+      : undefined;
+  if (configuredSessionUsageTranscriptMaxLineChars !== nextValue) {
+    configuredSessionUsageTranscriptMaxLineChars = nextValue;
+    sessionUsageCache.clear();
   }
-  if (sawCacheRead) {
-    snapshot.cacheRead = cacheRead;
+}
+
+export function getSessionUsageTranscriptMaxLineChars(): number {
+  return (
+    configuredSessionUsageTranscriptMaxLineChars ?? DEFAULT_SESSION_USAGE_TRANSCRIPT_MAX_LINE_CHARS
+  );
+}
+
+function getCachedSessionUsage(
+  cacheKey: string,
+  stat: fs.Stats,
+): SessionTranscriptUsageSnapshot | null | undefined {
+  const cached = sessionUsageCache.get(cacheKey);
+  if (!cached) {
+    return undefined;
   }
-  if (sawCacheWrite) {
-    snapshot.cacheWrite = cacheWrite;
+  if (cached.mtimeMs !== stat.mtimeMs || cached.size !== stat.size) {
+    sessionUsageCache.delete(cacheKey);
+    return undefined;
   }
-  if (sawCost) {
-    snapshot.costUsd = costUsdTotal;
+  // LRU bump
+  sessionUsageCache.delete(cacheKey);
+  sessionUsageCache.set(cacheKey, cached);
+  return cached.result;
+}
+
+function setCachedSessionUsage(
+  cacheKey: string,
+  stat: fs.Stats,
+  result: SessionTranscriptUsageSnapshot | null,
+) {
+  sessionUsageCache.set(cacheKey, {
+    result,
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+  });
+  const maxEntries = getSessionUsageCacheMaxEntries();
+  while (sessionUsageCache.size > maxEntries) {
+    const oldestKey = sessionUsageCache.keys().next().value;
+    if (typeof oldestKey !== "string" || !oldestKey) {
+      break;
+    }
+    sessionUsageCache.delete(oldestKey);
   }
-  return snapshot;
 }
 
 export function readLatestSessionUsageFromTranscript(
@@ -576,12 +834,111 @@ export function readLatestSessionUsageFromTranscript(
 
   return withOpenTranscriptFd(filePath, (fd) => {
     const stat = fs.fstatSync(fd);
+    const cached = getCachedSessionUsage(filePath, stat);
+    if (cached !== undefined) {
+      return cached;
+    }
     if (stat.size === 0) {
+      setCachedSessionUsage(filePath, stat, null);
+      return null;
+    }
+    if (stat.size > getSessionUsageTranscriptMaxBytes()) {
+      setCachedSessionUsage(filePath, stat, null);
       return null;
     }
     const chunk = fs.readFileSync(fd, "utf-8");
-    return extractLatestUsageFromTranscriptChunk(chunk);
+    const result = extractLatestUsageFromTranscriptChunk(chunk);
+    setCachedSessionUsage(filePath, stat, result);
+    return result;
   });
+}
+
+async function readLatestSessionUsageFromStream(params: {
+  stream: fs.ReadStream;
+  maxLineChars: number;
+}): Promise<SessionTranscriptUsageSnapshot | null> {
+  const { stream, maxLineChars } = params;
+  const state = createTranscriptUsageAccumulator();
+  let pending = "";
+  try {
+    for await (const chunk of stream) {
+      pending += chunk;
+      let newlineIndex = pending.indexOf("\n");
+      while (newlineIndex >= 0) {
+        let line = pending.slice(0, newlineIndex);
+        pending = pending.slice(newlineIndex + 1);
+        if (line.endsWith("\r")) {
+          line = line.slice(0, -1);
+        }
+        if (line.length > maxLineChars) {
+          return null;
+        }
+        accumulateTranscriptUsageLine(state, line);
+        newlineIndex = pending.indexOf("\n");
+      }
+      if (pending.length > maxLineChars) {
+        return null;
+      }
+    }
+
+    let tail = pending;
+    if (tail.endsWith("\r")) {
+      tail = tail.slice(0, -1);
+    }
+    if (tail.length > maxLineChars) {
+      return null;
+    }
+    accumulateTranscriptUsageLine(state, tail);
+    return finalizeTranscriptUsageAccumulator(state);
+  } finally {
+    if (!stream.destroyed) {
+      stream.destroy();
+    }
+  }
+}
+
+export async function readLatestSessionUsageFromTranscriptAsync(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile?: string,
+  agentId?: string,
+): Promise<SessionTranscriptUsageSnapshot | null> {
+  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
+  if (!filePath) {
+    return null;
+  }
+
+  let fileHandle: fs.promises.FileHandle | null = null;
+  try {
+    fileHandle = await fs.promises.open(filePath, "r");
+    const stat = await fileHandle.stat();
+    const cached = getCachedSessionUsage(filePath, stat);
+    if (cached !== undefined) {
+      return cached;
+    }
+    if (stat.size === 0) {
+      setCachedSessionUsage(filePath, stat, null);
+      return null;
+    }
+    if (stat.size > getSessionUsageTranscriptMaxBytes()) {
+      setCachedSessionUsage(filePath, stat, null);
+      return null;
+    }
+    const maxLineChars = getSessionUsageTranscriptMaxLineChars();
+    const stream = fileHandle.createReadStream({ encoding: "utf-8" });
+    const result = await readLatestSessionUsageFromStream({
+      stream,
+      maxLineChars,
+    });
+    setCachedSessionUsage(filePath, stat, result);
+    return result;
+  } catch {
+    return null;
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close().catch(() => {});
+    }
+  }
 }
 
 const PREVIEW_READ_SIZES = [64 * 1024, 256 * 1024, 1024 * 1024];

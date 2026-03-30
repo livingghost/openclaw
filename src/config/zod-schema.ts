@@ -97,6 +97,11 @@ const LoggingLevelSchema = z.union([
   z.literal("trace"),
 ]);
 
+// Keep in sync with src/gateway/session-utils.fs.ts.
+const MAX_SESSION_USAGE_CACHE_MAX_ENTRIES = 100_000;
+const MAX_SESSION_USAGE_TRANSCRIPT_BYTES = 128 * 1024 * 1024;
+const MAX_SESSION_USAGE_TRANSCRIPT_LINE_CHARS = 8 * 1024 * 1024;
+
 const MemoryQmdSchema = z
   .object({
     command: z.string().optional(),
@@ -862,6 +867,31 @@ export const OpenClawSchema = z
               .optional(),
             allowCommands: z.array(z.string()).optional(),
             denyCommands: z.array(z.string()).optional(),
+          })
+          .strict()
+          .optional(),
+        sessionsList: z
+          .object({
+            usageCacheMaxEntries: z
+              .number()
+              .int()
+              .positive()
+              .max(MAX_SESSION_USAGE_CACHE_MAX_ENTRIES)
+              .optional(),
+            transcriptUsageMaxBytes: z
+              .number()
+              .int()
+              .positive()
+              .max(MAX_SESSION_USAGE_TRANSCRIPT_BYTES)
+              .optional(),
+            transcriptUsageMaxLineChars: z
+              .number()
+              .int()
+              .positive()
+              .max(MAX_SESSION_USAGE_TRANSCRIPT_LINE_CHARS)
+              .optional(),
+            prewarmUsageCache: z.boolean().optional(),
+            prewarmConcurrency: z.number().int().min(1).max(64).optional(),
           })
           .strict()
           .optional(),
