@@ -46,6 +46,7 @@ async function processDiscordInboundJob(params: {
   lifecycleSignal?: AbortSignal;
   runTimeoutMs?: number;
   testing?: DiscordInboundWorkerTestingHooks;
+  onRunSettledAfterTimeout?: (settledRun: Promise<void>) => void;
 }) {
   const timeoutMs = normalizeDiscordInboundWorkerTimeoutMs(params.runTimeoutMs);
   const contextSuffix = formatDiscordRunContextSuffix(params.job);
@@ -96,6 +97,7 @@ async function processDiscordInboundJob(params: {
         danger(`discord inbound worker failed after timeout: ${String(error)}${contextSuffix}`),
       );
     },
+    onRunSettledAfterTimeout: params.onRunSettledAfterTimeout,
   });
 }
 
@@ -158,6 +160,7 @@ export function createDiscordInboundWorker(
   params: DiscordInboundWorkerParams,
 ): DiscordInboundWorker {
   const runQueue = new KeyedAsyncQueue();
+  const pendingRuns = new Set<Promise<void>>();
   const runState = createRunStateMachine({
     setStatus: params.setStatus,
     abortSignal: params.abortSignal,
@@ -165,31 +168,49 @@ export function createDiscordInboundWorker(
 
   return {
     enqueue(job) {
-      void runQueue
-        .enqueue(job.queueKey, async () => {
+      const runPromise = runQueue.enqueue(job.queueKey, async () => {
+        if (!runState.isActive()) {
+          return;
+        }
+        runState.onRunStart();
+        try {
           if (!runState.isActive()) {
             return;
           }
-          runState.onRunStart();
-          try {
-            if (!runState.isActive()) {
-              return;
-            }
-            await processDiscordInboundJob({
-              job,
-              runtime: params.runtime,
-              lifecycleSignal: params.abortSignal,
-              runTimeoutMs: params.runTimeoutMs,
-              testing: params.__testing,
-            });
-          } finally {
-            runState.onRunEnd();
-          }
-        })
-        .catch((error) => {
-          params.runtime.error?.(danger(`discord inbound worker failed: ${String(error)}`));
-        });
+          await processDiscordInboundJob({
+            job,
+            runtime: params.runtime,
+            lifecycleSignal: params.abortSignal,
+            runTimeoutMs: params.runTimeoutMs,
+            testing: params.__testing,
+            onRunSettledAfterTimeout: (settledRun) => {
+              pendingRuns.add(settledRun);
+              void settledRun.finally(() => {
+                pendingRuns.delete(settledRun);
+              });
+            },
+          });
+        } finally {
+          runState.onRunEnd();
+        }
+      });
+      const trackedRun = runPromise.then(
+        () => undefined,
+        () => undefined,
+      );
+      pendingRuns.add(trackedRun);
+      void trackedRun.finally(() => {
+        pendingRuns.delete(trackedRun);
+      });
+      void runPromise.catch((error) => {
+        params.runtime.error?.(danger(`discord inbound worker failed: ${String(error)}`));
+      });
     },
     deactivate: runState.deactivate,
+    waitForIdle: async () => {
+      while (pendingRuns.size > 0) {
+        await Promise.allSettled([...pendingRuns]);
+      }
+    },
   };
 }
