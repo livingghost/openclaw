@@ -37,6 +37,7 @@ const ClientToolDefinitionSchema = Type.Object(
         name: NonEmptyString,
         description: Type.Optional(Type.String()),
         parameters: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+        strict: Type.Optional(Type.Boolean()),
       },
       { additionalProperties: false },
     ),
