@@ -364,7 +364,9 @@ function createMessageSentEmitter(params: {
   channel: Exclude<OutboundChannel, "none">;
   to: string;
   accountId?: string;
+  threadId?: string | number | null;
   sessionKeyForInternalHooks?: string;
+  agentIdForHooks?: string;
   mirrorIsGroup?: boolean;
   mirrorGroupId?: string;
 }): { emitMessageSent: (event: MessageSentEvent) => void; hasMessageSentHooks: boolean } {
@@ -383,6 +385,9 @@ function createMessageSentEmitter(params: {
       accountId: params.accountId ?? undefined,
       conversationId: params.to,
       messageId: event.messageId,
+      threadId: params.threadId ?? undefined,
+      sessionKey: params.sessionKeyForInternalHooks,
+      agentId: params.agentIdForHooks,
       isGroup: params.mirrorIsGroup,
       groupId: params.mirrorGroupId,
     });
@@ -636,6 +641,7 @@ async function deliverOutboundPayloadsCore(
   const normalizedPayloads = normalizePayloadsForChannelDelivery(payloads, channel, handler);
   const hookRunner = getGlobalHookRunner();
   const sessionKeyForInternalHooks = params.mirror?.sessionKey ?? params.session?.key;
+  const agentIdForHooks = params.mirror?.agentId ?? params.session?.agentId;
   const mirrorIsGroup = params.mirror?.isGroup;
   const mirrorGroupId = params.mirror?.groupId;
   const { emitMessageSent, hasMessageSentHooks } = createMessageSentEmitter({
@@ -643,7 +649,9 @@ async function deliverOutboundPayloadsCore(
     channel,
     to,
     accountId,
+    threadId: params.threadId,
     sessionKeyForInternalHooks,
+    agentIdForHooks,
     mirrorIsGroup,
     mirrorGroupId,
   });

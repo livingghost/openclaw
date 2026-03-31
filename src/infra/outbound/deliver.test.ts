@@ -1039,6 +1039,40 @@ describe("deliverOutboundPayloads", () => {
     );
   });
 
+  it("forwards thread/session/agent metadata into message_sent hooks", async () => {
+    hookMocks.runner.hasHooks.mockReturnValue(true);
+    const sendTelegram = vi.fn().mockResolvedValue({ messageId: "tg-1", chatId: "123" });
+
+    await deliverOutboundPayloads({
+      cfg: {},
+      channel: "telegram",
+      to: "123",
+      accountId: "work",
+      threadId: "topic-9",
+      payloads: [{ text: "hello from thread" }],
+      deps: { sendTelegram },
+      session: { key: "agent:agent-main:telegram:123", agentId: "agent-main" },
+    });
+
+    expect(hookMocks.runner.runMessageSent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "123",
+        content: "hello from thread",
+        success: true,
+        metadata: expect.objectContaining({
+          channel: "telegram",
+          accountId: "work",
+          conversationId: "123",
+          messageId: "tg-1",
+          threadId: "topic-9",
+          sessionKey: "agent:agent-main:telegram:123",
+          agentId: "agent-main",
+        }),
+      }),
+      expect.objectContaining({ channelId: "telegram", accountId: "work", conversationId: "123" }),
+    );
+  });
+
   it("short-circuits lower-priority message_sending hooks after cancel=true", async () => {
     const hookRegistry = createEmptyPluginRegistry();
     const high = vi.fn().mockResolvedValue({ cancel: true, content: "blocked" });
