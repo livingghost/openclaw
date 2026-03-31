@@ -1519,9 +1519,8 @@ export const chatHandlers: GatewayRequestHandlers = {
       return;
     }
 
-    const activeExisting = context.chatAbortControllers.get(clientRunId);
-    if (activeExisting) {
-      if (activeExisting.kind === "chat") {
+    const respondForActiveRunId = (activeExisting: ChatAbortControllerEntry) => {
+      if (activeExisting?.kind === "chat") {
         respond(true, { runId: clientRunId, status: "in_flight" as const }, undefined, {
           cached: true,
           runId: clientRunId,
@@ -1536,6 +1535,11 @@ export const chatHandlers: GatewayRequestHandlers = {
           runId: clientRunId,
         },
       );
+    };
+
+    const activeExisting = context.chatAbortControllers.get(clientRunId);
+    if (activeExisting) {
+      respondForActiveRunId(activeExisting);
       return;
     }
 
@@ -1577,6 +1581,12 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
 
     try {
+      const claimedExisting = context.chatAbortControllers.get(clientRunId);
+      if (claimedExisting) {
+        respondForActiveRunId(claimedExisting);
+        return;
+      }
+
       const abortController = new AbortController();
       context.chatAbortControllers.set(clientRunId, {
         kind: "chat",
