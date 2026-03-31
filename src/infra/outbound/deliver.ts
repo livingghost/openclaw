@@ -447,8 +447,9 @@ function resolveOutboundHookMetadata(params: {
   agentId?: string;
 } {
   const resolvedThreadId =
-    params.threadId ??
-    (params.channel === "slack" && params.replyToId ? params.replyToId : undefined);
+    params.channel === "slack" && params.replyToId
+      ? params.replyToId
+      : (params.threadId ?? undefined);
   return {
     conversationId: params.conversationId ?? params.to,
     threadId: resolvedThreadId,

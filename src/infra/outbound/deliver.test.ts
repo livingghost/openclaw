@@ -918,6 +918,43 @@ describe("deliverOutboundPayloads", () => {
     expect(internalHookMocks.triggerInternalHook).toHaveBeenCalledTimes(1);
   });
 
+  it("prefers replyToId over threadId for Slack internal hook metadata", async () => {
+    hookMocks.runner.hasHooks.mockReturnValue(true);
+    const sendText = vi.fn().mockResolvedValue({ channel: "slack", messageId: "sl-1" });
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "slack",
+          source: "test",
+          plugin: createOutboundTestPlugin({
+            id: "slack",
+            outbound: { deliveryMode: "direct", sendText },
+          }),
+        },
+      ]),
+    );
+
+    await deliverOutboundPayloads({
+      cfg: {},
+      channel: "slack",
+      to: "C123",
+      threadId: "session-thread",
+      replyToId: "reply-thread",
+      session: { key: "agent:main:main" },
+      payloads: [{ text: "hello" }],
+    });
+
+    expect(hookMocks.runner.runMessageSent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "C123",
+        content: "hello",
+        success: true,
+        metadata: expect.objectContaining({ threadId: "reply-thread" }),
+      }),
+      expect.objectContaining({ channelId: "slack" }),
+    );
+  });
+
   it("warns when session.agentId is set without a session key", async () => {
     const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "w1", toJid: "jid" });
     hookMocks.runner.hasHooks.mockReturnValue(true);
