@@ -293,7 +293,7 @@ describe("processDiscordMessage sender ownership", () => {
         name: "Ops Bot",
         tag: "ops-bot",
       },
-      senderAgentIdByBotUserId: new Map([["BOT-OPS", "ops-agent"]]),
+      botAgentIds: new Map([["BOT-OPS", "ops-agent"]]),
     });
 
     await runProcessDiscordMessage(ctx);

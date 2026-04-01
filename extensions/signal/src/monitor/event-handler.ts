@@ -558,9 +558,9 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
     const senderAgentId =
       sender.kind === "phone"
         ? sender.e164
-          ? deps.senderAgentIdsBySignalIdentity?.get(sender.e164)
+          ? deps.signalAgentIds?.get(sender.e164)
           : undefined
-        : deps.senderAgentIdsBySignalIdentity?.get(`uuid:${sender.raw}`);
+        : deps.signalAgentIds?.get(`uuid:${sender.raw}`);
     const senderAllowId = formatSignalSenderId(sender);
     if (!senderRecipient) {
       return;

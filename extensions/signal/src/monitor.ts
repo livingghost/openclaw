@@ -380,7 +380,7 @@ export async function monitorSignalProvider(opts: MonitorSignalOpts = {}): Promi
   const mediaMaxBytes = (opts.mediaMaxMb ?? accountInfo.config.mediaMaxMb ?? 8) * 1024 * 1024;
   const ignoreAttachments = opts.ignoreAttachments ?? accountInfo.config.ignoreAttachments ?? false;
   const sendReadReceipts = Boolean(opts.sendReadReceipts ?? accountInfo.config.sendReadReceipts);
-  const senderAgentIdsBySignalIdentity = resolveConfiguredSignalSenderAgentIds(cfg);
+  const signalAgentIds = resolveConfiguredSignalSenderAgentIds(cfg);
   const waitForTransportReadyFn = opts.waitForTransportReady ?? waitForTransportReady;
 
   const autoStart = opts.autoStart ?? accountInfo.config.autoStart ?? !accountInfo.config.httpUrl;
@@ -439,7 +439,7 @@ export async function monitorSignalProvider(opts: MonitorSignalOpts = {}): Promi
       account,
       accountUuid: accountInfo.config.accountUuid,
       accountId: accountInfo.accountId,
-      senderAgentIdsBySignalIdentity,
+      signalAgentIds,
       blockStreaming: accountInfo.config.blockStreaming,
       historyLimit,
       groupHistories,

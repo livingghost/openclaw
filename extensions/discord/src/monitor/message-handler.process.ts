@@ -243,7 +243,7 @@ export async function processDiscordMessage(
     ? (sender.tag ?? sender.name ?? author.username)
     : author.username;
   const senderTag = sender.tag;
-  const senderAgentId = ctx.senderAgentIdByBotUserId?.get(sender.id.trim());
+  const senderAgentId = ctx.botAgentIds?.get(sender.id.trim());
   const { groupSystemPrompt, ownerAllowFrom, untrustedContext } = buildDiscordInboundAccessContext({
     channelConfig,
     guildInfo,

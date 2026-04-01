@@ -332,7 +332,7 @@ describe("slack prepareSlackMessage inbound contract", () => {
         },
       } as OpenClawConfig,
       defaultRequireMention: false,
-      senderAgentIdByUserId: new Map([["U_BOT_OPS", "ops-agent"]]),
+      userAgentIds: new Map([["U_BOT_OPS", "ops-agent"]]),
     });
     // oxlint-disable-next-line typescript/no-explicit-any
     slackCtx.resolveUserName = async () => ({ name: "Ops Bot" }) as any;

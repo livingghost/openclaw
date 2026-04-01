@@ -10,7 +10,7 @@ export function createInboundSlackTestContext(params: {
   defaultRequireMention?: boolean;
   replyToMode?: "off" | "all" | "first";
   channelsConfig?: Record<string, { systemPrompt: string }>;
-  senderAgentIdByUserId?: ReadonlyMap<string, string>;
+  userAgentIds?: ReadonlyMap<string, string>;
 }) {
   return createSlackMonitorContext({
     cfg: params.cfg,
@@ -21,7 +21,7 @@ export function createInboundSlackTestContext(params: {
     botUserId: "B1",
     teamId: "T1",
     apiAppId: "A1",
-    senderAgentIdByUserId: params.senderAgentIdByUserId,
+    userAgentIds: params.userAgentIds,
     historyLimit: 0,
     sessionScope: "per-sender",
     mainKey: "main",

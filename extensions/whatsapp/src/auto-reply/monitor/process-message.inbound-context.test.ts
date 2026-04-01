@@ -28,7 +28,7 @@ function makeProcessMessageArgs(params: {
   groupHistories?: Map<string, Array<{ sender: string; body: string }>>;
   groupHistory?: Array<{ sender: string; body: string }>;
   rememberSentText?: (text: string | undefined, opts: unknown) => void;
-  senderAgentIdByIdentity?: ReadonlyMap<string, string>;
+  identityAgentIds?: ReadonlyMap<string, string>;
 }) {
   return {
     // oxlint-disable-next-line typescript/no-explicit-any
@@ -57,7 +57,7 @@ function makeProcessMessageArgs(params: {
     echoHas: () => false,
     echoForget: () => {},
     buildCombinedEchoKey: () => "echo",
-    senderAgentIdByIdentity: params.senderAgentIdByIdentity,
+    identityAgentIds: params.identityAgentIds,
     ...(params.groupHistory ? { groupHistory: params.groupHistory } : {}),
     // oxlint-disable-next-line typescript/no-explicit-any
   } as any;
@@ -227,7 +227,7 @@ describe("web processMessage inbound context", () => {
       makeProcessMessageArgs({
         routeSessionKey: "agent:main:whatsapp:direct:+1000",
         groupHistoryKey: "+1000",
-        senderAgentIdByIdentity: new Map([
+        identityAgentIds: new Map([
           ["+15550002222", "ops-agent"],
           ["alice@s.whatsapp.net", "ops-agent"],
         ]),

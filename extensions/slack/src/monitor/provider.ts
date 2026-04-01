@@ -396,7 +396,7 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
     );
   }
 
-  const senderAgentIdByUserId = await buildSlackSenderAgentIdByUserId({
+  const userAgentIds = await buildSlackSenderAgentIdByUserId({
     cfg,
     client: app.client,
     currentAccountId: account.accountId,
@@ -412,7 +412,7 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
     botUserId,
     teamId,
     apiAppId,
-    senderAgentIdByUserId,
+    userAgentIds,
     historyLimit,
     sessionScope,
     mainKey,

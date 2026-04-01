@@ -211,7 +211,7 @@ function buildDiscordSenderAgentIdByBotUserId(params: {
   currentAccountId: string;
   currentBotUserId?: string | null;
 }): ReadonlyMap<string, string> {
-  const senderAgentIdByBotUserId = new Map<string, string>();
+  const botAgentIds = new Map<string, string>();
   for (const account of listEnabledDiscordAccounts(params.cfg)) {
     const senderAgentId = resolveOwningAgentIdForChannelAccount(
       params.cfg,
@@ -229,9 +229,9 @@ function buildDiscordSenderAgentIdByBotUserId(params: {
     if (!botUserId) {
       continue;
     }
-    senderAgentIdByBotUserId.set(botUserId, senderAgentId);
+    botAgentIds.set(botUserId, senderAgentId);
   }
-  return senderAgentIdByBotUserId;
+  return botAgentIds;
 }
 
 function isLegacyMissingSessionError(message: string): boolean {
@@ -1001,7 +1001,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
           details,
         }),
     });
-    const senderAgentIdByBotUserId = buildDiscordSenderAgentIdByBotUserId({
+    const botAgentIds = buildDiscordSenderAgentIdByBotUserId({
       cfg,
       currentAccountId: account.accountId,
       currentBotUserId: botUserId,
@@ -1054,7 +1054,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
       abortSignal: opts.abortSignal,
       workerRunTimeoutMs: discordCfg.inboundWorker?.runTimeoutMs,
       botUserId,
-      senderAgentIdByBotUserId,
+      botAgentIds,
       guildHistories,
       historyLimit,
       mediaMaxBytes,

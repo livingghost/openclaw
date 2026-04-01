@@ -155,7 +155,7 @@ export async function processMessage(params: {
   echoHas: (key: string) => boolean;
   echoForget: (key: string) => void;
   buildCombinedEchoKey: (p: { sessionKey: string; combinedBody: string }) => string;
-  senderAgentIdByIdentity?: ReadonlyMap<string, string>;
+  identityAgentIds?: ReadonlyMap<string, string>;
   maxMediaTextChunkLimit?: number;
   groupHistory?: GroupHistoryEntry[];
   suppressGroupHistoryClear?: boolean;
@@ -252,7 +252,7 @@ export async function processMessage(params: {
 
   const sender = getSenderIdentity(params.msg);
   const senderAgentId = getComparableIdentityValues(sender)
-    .map((value) => params.senderAgentIdByIdentity?.get(value))
+    .map((value) => params.identityAgentIds?.get(value))
     .find((value): value is string => Boolean(value));
   const self = getSelfIdentity(params.msg);
   const replyTo = getReplyContext(params.msg);

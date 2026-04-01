@@ -31,7 +31,7 @@ export type SlackMonitorContext = {
   botUserId: string;
   teamId: string;
   apiAppId: string;
-  senderAgentIdByUserId?: ReadonlyMap<string, string>;
+  userAgentIds?: ReadonlyMap<string, string>;
 
   historyLimit: number;
   channelHistories: Map<string, HistoryEntry[]>;
@@ -98,7 +98,7 @@ export function createSlackMonitorContext(params: {
   botUserId: string;
   teamId: string;
   apiAppId: string;
-  senderAgentIdByUserId?: ReadonlyMap<string, string>;
+  userAgentIds?: ReadonlyMap<string, string>;
 
   historyLimit: number;
   sessionScope: SessionScope;
@@ -399,7 +399,7 @@ export function createSlackMonitorContext(params: {
     botUserId: params.botUserId,
     teamId: params.teamId,
     apiAppId: params.apiAppId,
-    senderAgentIdByUserId: params.senderAgentIdByUserId,
+    userAgentIds: params.userAgentIds,
     historyLimit: params.historyLimit,
     channelHistories,
     sessionScope: params.sessionScope,

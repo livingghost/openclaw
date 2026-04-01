@@ -131,7 +131,7 @@ export async function monitorWebChannel(
   >();
   const groupMemberNames = new Map<string, Map<string, string>>();
   const echoTracker = createEchoTracker({ maxItems: 100, logVerbose });
-  const senderAgentIdByIdentity = resolveConfiguredWhatsAppSenderAgentIds(cfg);
+  const identityAgentIds = resolveConfiguredWhatsAppSenderAgentIds(cfg);
 
   const sleep =
     tuning.sleep ??
@@ -186,7 +186,7 @@ export async function monitorWebChannel(
       replyLogger,
       baseMentionConfig,
       account,
-      senderAgentIdByIdentity,
+      identityAgentIds,
     });
 
     const inboundDebounceMs = resolveInboundDebounceMs({ cfg, channel: "whatsapp" });
