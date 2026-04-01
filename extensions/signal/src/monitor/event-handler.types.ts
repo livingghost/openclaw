@@ -78,6 +78,7 @@ export type SignalEventHandlerDeps = {
   account?: string;
   accountUuid?: string;
   accountId: string;
+  senderAgentIdsBySignalIdentity?: ReadonlyMap<string, string>;
   blockStreaming?: boolean;
   historyLimit: number;
   groupHistories: Map<string, HistoryEntry[]>;

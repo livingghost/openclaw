@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import SlackBolt, * as SlackBoltNamespace from "@slack/bolt";
+import type { App } from "@slack/bolt";
 import {
   addAllowlistUserEntriesFromConfigEntry,
   buildAllowlistResolutionSummary,
@@ -19,6 +20,7 @@ import { createConnectedChannelStatusPatch } from "openclaw/plugin-sdk/gateway-r
 import { DEFAULT_GROUP_HISTORY_LIMIT } from "openclaw/plugin-sdk/reply-history";
 import { resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-runtime";
 import { normalizeMainKey } from "openclaw/plugin-sdk/routing";
+import { resolveOwningAgentIdForChannelAccount } from "openclaw/plugin-sdk/routing";
 import { warn } from "openclaw/plugin-sdk/runtime-env";
 import {
   computeBackoff,
@@ -29,7 +31,7 @@ import {
 import { normalizeResolvedSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import { normalizeStringEntries } from "openclaw/plugin-sdk/text-runtime";
 import { installRequestBodyLimitGuard } from "openclaw/plugin-sdk/webhook-request-guards";
-import { resolveSlackAccount } from "../accounts.js";
+import { listEnabledSlackAccounts, resolveSlackAccount } from "../accounts.js";
 import { resolveSlackWebClientOptions } from "../client.js";
 import { normalizeSlackWebhookPath, registerSlackHttpHandler } from "../http/index.js";
 import { SLACK_TEXT_LIMIT } from "../limits.js";
@@ -202,6 +204,39 @@ function formatSlackUserResolved(entry: SlackUserResolution): string {
   });
 }
 
+export async function buildSlackSenderAgentIdByUserId(params: {
+  cfg: ReturnType<typeof loadConfig>;
+  client: App["client"];
+  currentAccountId: string;
+  currentBotUserId?: string;
+}): Promise<ReadonlyMap<string, string>> {
+  const ids = new Map<string, string>();
+  for (const account of listEnabledSlackAccounts(params.cfg)) {
+    const senderAgentId = resolveOwningAgentIdForChannelAccount(
+      params.cfg,
+      "slack",
+      account.accountId,
+    );
+    if (!senderAgentId) {
+      continue;
+    }
+    let botUserId =
+      account.accountId === params.currentAccountId ? params.currentBotUserId?.trim() : "";
+    if (!botUserId && account.botToken) {
+      try {
+        const auth = await params.client.auth.test({ token: account.botToken });
+        botUserId = auth.user_id?.trim() ?? "";
+      } catch {
+        botUserId = "";
+      }
+    }
+    if (botUserId) {
+      ids.set(botUserId, senderAgentId);
+    }
+  }
+  return ids;
+}
+
 export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
   const cfg = opts.config ?? loadConfig();
   const runtime: RuntimeEnv = opts.runtime ?? createNonExitingRuntime();
@@ -361,6 +396,13 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
     );
   }
 
+  const senderAgentIdByUserId = await buildSlackSenderAgentIdByUserId({
+    cfg,
+    client: app.client,
+    currentAccountId: account.accountId,
+    currentBotUserId: botUserId,
+  });
+
   const ctx = createSlackMonitorContext({
     cfg,
     accountId: account.accountId,
@@ -370,6 +412,7 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
     botUserId,
     teamId,
     apiAppId,
+    senderAgentIdByUserId,
     historyLimit,
     sessionScope,
     mainKey,

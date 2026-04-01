@@ -7,9 +7,12 @@ import {
   resolveUserPath,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/account-core";
+import { resolveOwningAgentIdForChannelAccount } from "openclaw/plugin-sdk/routing";
 import { resolveOAuthDir } from "openclaw/plugin-sdk/state-paths";
 import { resolveMergedWhatsAppAccountConfig } from "./account-config.js";
+import { readWebSelfId } from "./auth-store.js";
 import { hasWebCredsSync } from "./creds-files.js";
+import { getComparableIdentityValues } from "./identity.js";
 import type { DmPolicy, GroupPolicy, WhatsAppAccountConfig } from "./runtime-api.js";
 
 export type ResolvedWhatsAppAccount = {
@@ -164,4 +167,21 @@ export function listEnabledWhatsAppAccounts(cfg: OpenClawConfig): ResolvedWhatsA
   return listWhatsAppAccountIds(cfg)
     .map((accountId) => resolveWhatsAppAccount({ cfg, accountId }))
     .filter((account) => account.enabled);
+}
+
+export function resolveConfiguredWhatsAppSenderAgentIds(
+  cfg: OpenClawConfig,
+): ReadonlyMap<string, string> {
+  const ids = new Map<string, string>();
+  for (const account of listEnabledWhatsAppAccounts(cfg)) {
+    const senderAgentId = resolveOwningAgentIdForChannelAccount(cfg, "whatsapp", account.accountId);
+    if (!senderAgentId) {
+      continue;
+    }
+    const self = readWebSelfId(account.authDir);
+    for (const identity of getComparableIdentityValues(self)) {
+      ids.set(identity, senderAgentId);
+    }
+  }
+  return ids;
 }

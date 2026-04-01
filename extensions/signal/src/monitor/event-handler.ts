@@ -101,6 +101,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
     senderDisplay: string;
     senderRecipient: string;
     senderPeerId: string;
+    senderAgentId?: string;
     groupId?: string;
     groupName?: string;
     isGroup: boolean;
@@ -202,6 +203,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       GroupSubject: entry.isGroup ? (entry.groupName ?? undefined) : undefined,
       SenderName: entry.senderName,
       SenderId: entry.senderDisplay,
+      SenderAgentId: entry.senderAgentId,
       Provider: "signal" as const,
       Surface: "signal" as const,
       MessageSid: entry.messageId,
@@ -553,6 +555,12 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
 
     const senderRecipient = resolveSignalRecipient(sender);
     const senderPeerId = resolveSignalPeerId(sender);
+    const senderAgentId =
+      sender.kind === "phone"
+        ? sender.e164
+          ? deps.senderAgentIdsBySignalIdentity?.get(sender.e164)
+          : undefined
+        : deps.senderAgentIdsBySignalIdentity?.get(`uuid:${sender.raw}`);
     const senderAllowId = formatSignalSenderId(sender);
     if (!senderRecipient) {
       return;
@@ -783,6 +791,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       senderDisplay,
       senderRecipient,
       senderPeerId,
+      senderAgentId,
       groupId,
       groupName,
       isGroup,

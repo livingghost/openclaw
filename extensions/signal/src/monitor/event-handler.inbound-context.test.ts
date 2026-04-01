@@ -267,4 +267,27 @@ describe("signal createSignalEventHandler inbound context", () => {
     expect(capture.ctx).toBeUndefined();
     expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
   });
+
+  it("passes configured senderAgentId through finalized inbound context", async () => {
+    const handler = createSignalEventHandler(
+      createBaseSignalEventHandlerDeps({
+        senderAgentIdsBySignalIdentity: new Map([["+15550002222", "ops-agent"]]),
+        historyLimit: 0,
+      }),
+    );
+
+    await handler(
+      createSignalReceiveEvent({
+        sourceNumber: "+15550002222",
+        sourceName: "Ops Bot",
+        dataMessage: {
+          message: "bot hello",
+          attachments: [],
+        },
+      }),
+    );
+
+    expect(capture.ctx).toBeTruthy();
+    expect(capture.ctx?.SenderAgentId).toBe("ops-agent");
+  });
 });

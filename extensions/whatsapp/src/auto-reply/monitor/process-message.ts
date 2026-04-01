@@ -34,6 +34,7 @@ import {
 import { jidToE164, normalizeE164 } from "openclaw/plugin-sdk/text-runtime";
 import { resolveWhatsAppAccount } from "../../accounts.js";
 import {
+  getComparableIdentityValues,
   getPrimaryIdentityId,
   getReplyContext,
   getSelfIdentity,
@@ -154,6 +155,7 @@ export async function processMessage(params: {
   echoHas: (key: string) => boolean;
   echoForget: (key: string) => void;
   buildCombinedEchoKey: (p: { sessionKey: string; combinedBody: string }) => string;
+  senderAgentIdByIdentity?: ReadonlyMap<string, string>;
   maxMediaTextChunkLimit?: number;
   groupHistory?: GroupHistoryEntry[];
   suppressGroupHistoryClear?: boolean;
@@ -249,6 +251,9 @@ export async function processMessage(params: {
   }
 
   const sender = getSenderIdentity(params.msg);
+  const senderAgentId = getComparableIdentityValues(sender)
+    .map((value) => params.senderAgentIdByIdentity?.get(value))
+    .find((value): value is string => Boolean(value));
   const self = getSelfIdentity(params.msg);
   const replyTo = getReplyContext(params.msg);
   const dmRouteTarget =
@@ -334,6 +339,7 @@ export async function processMessage(params: {
     }),
     SenderName: sender.name ?? undefined,
     SenderId: getPrimaryIdentityId(sender) ?? undefined,
+    SenderAgentId: senderAgentId,
     SenderE164: sender.e164 ?? undefined,
     CommandAuthorized: commandAuthorized,
     WasMentioned: params.msg.wasMentioned,

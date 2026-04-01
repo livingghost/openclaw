@@ -26,7 +26,7 @@ import {
 } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeStringEntries } from "openclaw/plugin-sdk/text-runtime";
 import { normalizeE164 } from "openclaw/plugin-sdk/text-runtime";
-import { resolveSignalAccount } from "./accounts.js";
+import { resolveConfiguredSignalSenderAgentIds, resolveSignalAccount } from "./accounts.js";
 import { signalCheck, signalRpcRequest } from "./client.js";
 import { formatSignalDaemonExit, spawnSignalDaemon, type SignalDaemonHandle } from "./daemon.js";
 import { isSignalSenderAllowed, type resolveSignalSender } from "./identity.js";
@@ -380,6 +380,7 @@ export async function monitorSignalProvider(opts: MonitorSignalOpts = {}): Promi
   const mediaMaxBytes = (opts.mediaMaxMb ?? accountInfo.config.mediaMaxMb ?? 8) * 1024 * 1024;
   const ignoreAttachments = opts.ignoreAttachments ?? accountInfo.config.ignoreAttachments ?? false;
   const sendReadReceipts = Boolean(opts.sendReadReceipts ?? accountInfo.config.sendReadReceipts);
+  const senderAgentIdsBySignalIdentity = resolveConfiguredSignalSenderAgentIds(cfg);
   const waitForTransportReadyFn = opts.waitForTransportReady ?? waitForTransportReady;
 
   const autoStart = opts.autoStart ?? accountInfo.config.autoStart ?? !accountInfo.config.httpUrl;
@@ -438,6 +439,7 @@ export async function monitorSignalProvider(opts: MonitorSignalOpts = {}): Promi
       account,
       accountUuid: accountInfo.config.accountUuid,
       accountId: accountInfo.accountId,
+      senderAgentIdsBySignalIdentity,
       blockStreaming: accountInfo.config.blockStreaming,
       historyLimit,
       groupHistories,

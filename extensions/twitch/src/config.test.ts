@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getAccountConfig, listAccountIds } from "./config.js";
+import {
+  getAccountConfig,
+  listAccountIds,
+  resolveConfiguredTwitchSenderAgentIdsByUsername,
+} from "./config.js";
 
 describe("getAccountConfig", () => {
   const mockMultiAccountConfig = {
@@ -114,5 +118,27 @@ describe("listAccountIds", () => {
         },
       } as Parameters<typeof listAccountIds>[0]),
     ).toEqual(["default", "secondary"]);
+  });
+});
+
+describe("resolveConfiguredTwitchSenderAgentIdsByUsername", () => {
+  it("maps configured usernames to senderAgentId", () => {
+    const ids = resolveConfiguredTwitchSenderAgentIdsByUsername({
+      bindings: [{ agentId: "ops-agent", match: { channel: "twitch", accountId: "ops" } }],
+      channels: {
+        twitch: {
+          accounts: {
+            ops: {
+              username: "OpsBot",
+              accessToken: "token",
+              clientId: "client",
+              channel: "ops-channel",
+            },
+          },
+        },
+      },
+    } as OpenClawConfig);
+
+    expect(ids.get("opsbot")).toBe("ops-agent");
   });
 });

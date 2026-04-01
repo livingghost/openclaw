@@ -324,6 +324,36 @@ describe("slack prepareSlackMessage inbound contract", () => {
     expect(prepared!.ctxPayload.RawBody).toContain("Readiness probe failed");
   });
 
+  it("passes configured senderAgentId through finalized inbound context", async () => {
+    const slackCtx = createInboundSlackTestContext({
+      cfg: {
+        channels: {
+          slack: { enabled: true },
+        },
+      } as OpenClawConfig,
+      defaultRequireMention: false,
+      senderAgentIdByUserId: new Map([["U_BOT_OPS", "ops-agent"]]),
+    });
+    // oxlint-disable-next-line typescript/no-explicit-any
+    slackCtx.resolveUserName = async () => ({ name: "Ops Bot" }) as any;
+
+    const prepared = await prepareMessageWith(
+      slackCtx,
+      createSlackAccount({ allowBots: true }),
+      createSlackMessage({
+        channel: "C123",
+        channel_type: "channel",
+        text: "managed bot message",
+        user: "U_BOT_OPS",
+        bot_id: "B_OPS",
+        subtype: "bot_message",
+      }),
+    );
+
+    expect(prepared).toBeTruthy();
+    expect(prepared!.ctxPayload.SenderAgentId).toBe("ops-agent");
+  });
+
   it("keeps channel metadata out of GroupSystemPrompt", async () => {
     const slackCtx = createInboundSlackCtx({
       cfg: {

@@ -10,6 +10,7 @@ import type { ReplyPayload } from "../api.js";
 import { createChannelReplyPipeline } from "../api.js";
 import { checkTwitchAccessControl } from "./access-control.js";
 import { getOrCreateClientManager } from "./client-manager-registry.js";
+import { resolveConfiguredTwitchSenderAgentIdsByUsername } from "./config.js";
 import { getTwitchRuntime } from "./runtime.js";
 import type { TwitchAccountConfig, TwitchChatMessage } from "./types.js";
 import { stripMarkdownForTwitch } from "./utils/markdown.js";
@@ -48,6 +49,9 @@ async function processTwitchMessage(params: {
 }): Promise<void> {
   const { message, account, accountId, config, runtime, core, statusSink } = params;
   const cfg = config as OpenClawConfig;
+  const senderAgentId = resolveConfiguredTwitchSenderAgentIdsByUsername(cfg).get(
+    message.username.trim().toLowerCase(),
+  );
 
   const route = core.channel.routing.resolveAgentRoute({
     cfg,
@@ -81,6 +85,7 @@ async function processTwitchMessage(params: {
     ConversationLabel: message.channel,
     SenderName: message.displayName ?? message.username,
     SenderId: message.userId,
+    SenderAgentId: senderAgentId,
     SenderUsername: message.username,
     Provider: "twitch",
     Surface: "twitch",

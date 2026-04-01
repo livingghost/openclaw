@@ -1,4 +1,5 @@
 import { listCombinedAccountIds } from "openclaw/plugin-sdk/account-resolution";
+import { resolveOwningAgentIdForChannelAccount } from "openclaw/plugin-sdk/routing";
 import type { OpenClawConfig } from "../runtime-api.js";
 import { resolveTwitchToken, type TwitchTokenResolution } from "./token.js";
 import type { TwitchAccountConfig } from "./types.js";
@@ -144,4 +145,19 @@ export function resolveTwitchSnapshotAccountId(
   return (
     Object.entries(accountMap).find(([, value]) => value === account)?.[0] ?? DEFAULT_ACCOUNT_ID
   );
+}
+
+export function resolveConfiguredTwitchSenderAgentIdsByUsername(
+  cfg: OpenClawConfig,
+): ReadonlyMap<string, string> {
+  const ids = new Map<string, string>();
+  for (const accountId of listAccountIds(cfg)) {
+    const account = getAccountConfig(cfg, accountId);
+    const username = account?.username?.trim().toLowerCase();
+    const senderAgentId = resolveOwningAgentIdForChannelAccount(cfg, "twitch", accountId);
+    if (account?.enabled !== false && username && senderAgentId) {
+      ids.set(username, senderAgentId);
+    }
+  }
+  return ids;
 }

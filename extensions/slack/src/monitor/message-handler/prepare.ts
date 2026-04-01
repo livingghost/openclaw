@@ -344,6 +344,7 @@ export async function prepareSlackMessage(params: {
     return null;
   }
   const { senderId, allowFromLower } = authorization;
+  const senderAgentId = ctx.senderAgentIdByUserId?.get(senderId);
   const routing = resolveSlackRoutingContext({
     ctx,
     account,
@@ -705,6 +706,7 @@ export async function prepareSlackMessage(params: {
     UntrustedContext: untrustedChannelMetadata ? [untrustedChannelMetadata] : undefined,
     SenderName: senderName,
     SenderId: senderId,
+    SenderAgentId: senderAgentId,
     Provider: "slack" as const,
     Surface: "slack" as const,
     MessageSid: message.ts,

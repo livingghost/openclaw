@@ -30,6 +30,7 @@ export function createWebOnMessageHandler(params: {
   replyLogger: ReturnType<(typeof import("openclaw/plugin-sdk/runtime-env"))["getChildLogger"]>;
   baseMentionConfig: MentionConfig;
   account: { authDir?: string; accountId?: string };
+  senderAgentIdByIdentity?: ReadonlyMap<string, string>;
 }) {
   const processForRoute = async (
     msg: WebInboundMsg,
@@ -57,6 +58,7 @@ export function createWebOnMessageHandler(params: {
       echoHas: params.echoTracker.has,
       echoForget: params.echoTracker.forget,
       buildCombinedEchoKey: params.echoTracker.buildCombinedKey,
+      senderAgentIdByIdentity: params.senderAgentIdByIdentity,
       groupHistory: opts?.groupHistory,
       suppressGroupHistoryClear: opts?.suppressGroupHistoryClear,
     });

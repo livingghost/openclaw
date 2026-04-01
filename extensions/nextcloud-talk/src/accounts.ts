@@ -1,5 +1,6 @@
 import { resolveMergedAccountConfig } from "openclaw/plugin-sdk/account-resolution";
 import { tryReadSecretFileSync } from "openclaw/plugin-sdk/core";
+import { resolveOwningAgentIdForChannelAccount } from "openclaw/plugin-sdk/routing";
 import {
   createAccountListHelpers,
   DEFAULT_ACCOUNT_ID,
@@ -136,4 +137,20 @@ export function listEnabledNextcloudTalkAccounts(cfg: CoreConfig): ResolvedNextc
   return listNextcloudTalkAccountIds(cfg)
     .map((accountId) => resolveNextcloudTalkAccount({ cfg, accountId }))
     .filter((account) => account.enabled);
+}
+
+export function resolveConfiguredNextcloudTalkSenderAgentIds(cfg: CoreConfig): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const account of listEnabledNextcloudTalkAccounts(cfg)) {
+    const senderId = account.config.apiUser?.trim();
+    const senderAgentId = resolveOwningAgentIdForChannelAccount(
+      cfg as Parameters<typeof resolveOwningAgentIdForChannelAccount>[0],
+      "nextcloud-talk",
+      account.accountId,
+    );
+    if (senderId && senderAgentId) {
+      ids.set(senderId, senderAgentId);
+    }
+  }
+  return ids;
 }

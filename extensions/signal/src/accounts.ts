@@ -4,6 +4,8 @@ import {
   resolveMergedAccountConfig,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/account-resolution";
+import { resolveOwningAgentIdForChannelAccount } from "openclaw/plugin-sdk/routing";
+import { normalizeE164 } from "openclaw/plugin-sdk/text-runtime";
 import type { SignalAccountConfig } from "./runtime-api.js";
 
 export type ResolvedSignalAccount = {
@@ -63,4 +65,23 @@ export function listEnabledSignalAccounts(cfg: OpenClawConfig): ResolvedSignalAc
   return listSignalAccountIds(cfg)
     .map((accountId) => resolveSignalAccount({ cfg, accountId }))
     .filter((account) => account.enabled);
+}
+
+export function resolveConfiguredSignalSenderAgentIds(cfg: OpenClawConfig): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const account of listEnabledSignalAccounts(cfg)) {
+    const senderAgentId = resolveOwningAgentIdForChannelAccount(cfg, "signal", account.accountId);
+    if (!senderAgentId) {
+      continue;
+    }
+    const phone = normalizeE164(account.config.account ?? "");
+    if (phone) {
+      ids.set(phone, senderAgentId);
+    }
+    const uuid = account.config.accountUuid?.trim();
+    if (uuid) {
+      ids.set(`uuid:${uuid}`, senderAgentId);
+    }
+  }
+  return ids;
 }

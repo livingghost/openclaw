@@ -15,7 +15,11 @@ import {
   formatDurationPrecise,
   type RuntimeEnv,
 } from "openclaw/plugin-sdk/runtime-env";
-import { resolveWhatsAppAccount, resolveWhatsAppMediaMaxBytes } from "../accounts.js";
+import {
+  resolveConfiguredWhatsAppSenderAgentIds,
+  resolveWhatsAppAccount,
+  resolveWhatsAppMediaMaxBytes,
+} from "../accounts.js";
 import { setActiveWebListener } from "../active-listener.js";
 import { monitorWebInbox } from "../inbound.js";
 import {
@@ -127,6 +131,7 @@ export async function monitorWebChannel(
   >();
   const groupMemberNames = new Map<string, Map<string, string>>();
   const echoTracker = createEchoTracker({ maxItems: 100, logVerbose });
+  const senderAgentIdByIdentity = resolveConfiguredWhatsAppSenderAgentIds(cfg);
 
   const sleep =
     tuning.sleep ??
@@ -181,6 +186,7 @@ export async function monitorWebChannel(
       replyLogger,
       baseMentionConfig,
       account,
+      senderAgentIdByIdentity,
     });
 
     const inboundDebounceMs = resolveInboundDebounceMs({ cfg, channel: "whatsapp" });

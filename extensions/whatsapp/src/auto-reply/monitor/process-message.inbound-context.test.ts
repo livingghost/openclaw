@@ -28,6 +28,7 @@ function makeProcessMessageArgs(params: {
   groupHistories?: Map<string, Array<{ sender: string; body: string }>>;
   groupHistory?: Array<{ sender: string; body: string }>;
   rememberSentText?: (text: string | undefined, opts: unknown) => void;
+  senderAgentIdByIdentity?: ReadonlyMap<string, string>;
 }) {
   return {
     // oxlint-disable-next-line typescript/no-explicit-any
@@ -56,6 +57,7 @@ function makeProcessMessageArgs(params: {
     echoHas: () => false,
     echoForget: () => {},
     buildCombinedEchoKey: () => "echo",
+    senderAgentIdByIdentity: params.senderAgentIdByIdentity,
     ...(params.groupHistory ? { groupHistory: params.groupHistory } : {}),
     // oxlint-disable-next-line typescript/no-explicit-any
   } as any;
@@ -216,6 +218,35 @@ describe("web processMessage inbound context", () => {
     expect(ctx.OriginatingTo).toBe("+1000");
     expect(ctx.To).toBe("+2000");
     expect(ctx.OriginatingTo).not.toBe(ctx.To);
+  });
+
+  it("passes configured senderAgentId through finalized inbound context", async () => {
+    capturedCtx = undefined;
+
+    await processMessage(
+      makeProcessMessageArgs({
+        routeSessionKey: "agent:main:whatsapp:direct:+1000",
+        groupHistoryKey: "+1000",
+        senderAgentIdByIdentity: new Map([
+          ["+15550002222", "ops-agent"],
+          ["alice@s.whatsapp.net", "ops-agent"],
+        ]),
+        msg: {
+          id: "msg1",
+          from: "+1000",
+          to: "+2000",
+          chatType: "direct",
+          body: "hi",
+          senderJid: "alice@s.whatsapp.net",
+          senderE164: "+15550002222",
+        },
+      }),
+    );
+
+    expect(capturedCtx).toBeTruthy();
+    // oxlint-disable-next-line typescript/no-explicit-any
+    const ctx = capturedCtx as any;
+    expect(ctx.SenderAgentId).toBe("ops-agent");
   });
 
   it("defaults responsePrefix to identity name in self-chats when unset", async () => {
