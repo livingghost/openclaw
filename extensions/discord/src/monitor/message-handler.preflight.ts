@@ -926,7 +926,7 @@ export async function preflightDiscordMessage(
     token: params.token,
     runtime: params.runtime,
     botUserId: params.botUserId,
-    botAgentIds: params.botAgentIds,
+    identityAgentIds: params.identityAgentIds,
     abortSignal: params.abortSignal,
     guildHistories: params.guildHistories,
     historyLimit: params.historyLimit,

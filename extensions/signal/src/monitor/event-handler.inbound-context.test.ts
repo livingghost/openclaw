@@ -271,7 +271,7 @@ describe("signal createSignalEventHandler inbound context", () => {
   it("passes configured senderAgentId through finalized inbound context", async () => {
     const handler = createSignalEventHandler(
       createBaseSignalEventHandlerDeps({
-        signalAgentIds: new Map([["+15550002222", "ops-agent"]]),
+        identityAgentIds: new Map([["+15550002222", "ops-agent"]]),
         historyLimit: 0,
       }),
     );
