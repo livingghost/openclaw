@@ -60,8 +60,16 @@ describe("resolveOwningAgentIdForChannelAccount", () => {
       ],
     } as OpenClawConfig;
 
-    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "default")).toBe(
-      "default-agent",
-    );
+    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "default")).toBe("default-agent");
+  });
+
+  it("falls back to the default agent when no binding matches", () => {
+    const cfg = {
+      agents: {
+        list: [{ id: "default-agent", default: true, model: "gpt-5" }],
+      },
+    } as OpenClawConfig;
+
+    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBe("default-agent");
   });
 });

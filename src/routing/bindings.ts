@@ -52,9 +52,10 @@ function isScopedBinding(binding: AgentRouteBinding): boolean {
   }
   return Boolean(
     match.peer ||
-      (typeof match.guildId === "string" && match.guildId.trim()) ||
-      (typeof match.teamId === "string" && match.teamId.trim()) ||
-      (Array.isArray(match.roles) && match.roles.some((role) => typeof role === "string" && role.trim())),
+    (typeof match.guildId === "string" && match.guildId.trim()) ||
+    (typeof match.teamId === "string" && match.teamId.trim()) ||
+    (Array.isArray(match.roles) &&
+      match.roles.some((role) => typeof role === "string" && role.trim())),
   );
 }
 
@@ -148,7 +149,7 @@ export function resolveOwningAgentIdForChannelAccount(
       return resolved.agentId;
     }
   }
-  return wildcardAgentId;
+  return wildcardAgentId ?? normalizeAgentId(resolveDefaultAgentId(cfg));
 }
 
 export function buildChannelAccountBindings(cfg: OpenClawConfig) {

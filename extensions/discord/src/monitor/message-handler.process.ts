@@ -36,10 +36,7 @@ import { danger, logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtim
 import { convertMarkdownTables } from "openclaw/plugin-sdk/text-runtime";
 import { stripReasoningTagsFromText } from "openclaw/plugin-sdk/text-runtime";
 import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-runtime";
-import {
-  resolveDiscordMaxLinesPerMessage,
-  resolveDiscordSenderAgentIdByBotUserId,
-} from "../accounts.js";
+import { resolveDiscordMaxLinesPerMessage } from "../accounts.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
 import { resolveDiscordDraftStreamingChunking } from "../draft-chunking.js";
 import { createDiscordDraftStream } from "../draft-stream.js";
@@ -246,7 +243,7 @@ export async function processDiscordMessage(
     ? (sender.tag ?? sender.name ?? author.username)
     : author.username;
   const senderTag = sender.tag;
-  const senderAgentId = resolveDiscordSenderAgentIdByBotUserId(sender.id);
+  const senderAgentId = ctx.senderAgentIdByBotUserId?.get(sender.id.trim());
   const { groupSystemPrompt, ownerAllowFrom, untrustedContext } = buildDiscordInboundAccessContext({
     channelConfig,
     guildInfo,

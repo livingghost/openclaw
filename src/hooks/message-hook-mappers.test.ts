@@ -107,12 +107,12 @@ describe("message hook mappers", () => {
       from: "telegram:user:123",
       content: "commands-body",
       timestamp: 1710000000,
-        metadata: expect.objectContaining({
-          messageId: "msg-1",
-          senderAgentId: "ops-agent",
-          senderName: "User One",
-          threadId: 42,
-        }),
+      metadata: expect.objectContaining({
+        messageId: "msg-1",
+        senderAgentId: "ops-agent",
+        senderName: "User One",
+        threadId: 42,
+      }),
     });
     expect(toInternalMessageReceivedContext(canonical)).toEqual({
       from: "telegram:user:123",
