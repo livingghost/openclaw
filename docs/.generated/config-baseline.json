@@ -42783,6 +42783,68 @@
       "hasChildren": false
     },
     {
+      "path": "gateway.sessionsList",
+      "kind": "core",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "network",
+        "storage"
+      ],
+      "label": "Gateway Sessions List",
+      "help": "Gateway sessions.list performance tuning for transcript-derived metadata and startup warming. Leave defaults alone unless large session inventories cause sessions.list slowdowns.",
+      "hasChildren": true
+    },
+    {
+      "path": "gateway.sessionsList.prewarmConcurrency",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "network",
+        "performance",
+        "storage"
+      ],
+      "label": "Gateway Sessions List Prewarm Concurrency",
+      "help": "Maximum concurrency for the prewarm background task. Default: 16.",
+      "hasChildren": false
+    },
+    {
+      "path": "gateway.sessionsList.prewarmUsageCache",
+      "kind": "core",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "network",
+        "storage"
+      ],
+      "label": "Gateway Sessions List Prewarm Usage Cache",
+      "help": "Pre-warm the usage cache at gateway startup by reading transcripts for sessions lacking stored usage metadata. Default: false.",
+      "hasChildren": false
+    },
+    {
+      "path": "gateway.sessionsList.usageCacheMaxEntries",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "network",
+        "performance",
+        "storage"
+      ],
+      "label": "Gateway Sessions List Usage Cache Max Entries",
+      "help": "Maximum entries in the in-memory usage cache for transcript reads. Default: 5000.",
+      "hasChildren": false
+    },
+    {
       "path": "gateway.tailscale",
       "kind": "core",
       "type": "object",
