@@ -147,6 +147,31 @@ describe("resolveConfiguredDiscordBotAgentIdsByBotUserId", () => {
     ).toEqual(new Map([["BOT-OPS", "ops-agent"]]));
   });
 
+  it("falls back to the current account token when the startup bot id is unavailable", () => {
+    const cfg = {
+      channels: {
+        discord: {
+          accounts: {
+            ops: { token: "MTIz.abc.def" },
+          },
+        },
+      },
+      bindings: [
+        {
+          agentId: "ops-agent",
+          match: { channel: "discord", accountId: "ops" },
+        },
+      ],
+    };
+
+    expect(
+      resolveConfiguredDiscordBotAgentIdsByBotUserId({
+        cfg,
+        currentAccountId: "ops",
+      }).get("123"),
+    ).toBe("ops-agent");
+  });
+
   it("skips accounts that do not have an explicit ownership binding", () => {
     const cfg = {
       agents: {

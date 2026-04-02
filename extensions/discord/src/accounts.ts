@@ -101,6 +101,20 @@ function normalizeDiscordBotUserId(botUserId?: string | null): string | undefine
   return normalizedBotUserId || undefined;
 }
 
+function resolveDiscordAccountBotUserId(params: {
+  account: ResolvedDiscordAccount;
+  currentAccountId: string;
+  currentBotUserId?: string | null;
+}): string | undefined {
+  if (params.account.accountId === params.currentAccountId) {
+    return (
+      normalizeDiscordBotUserId(params.currentBotUserId) ??
+      parseApplicationIdFromToken(params.account.token)
+    );
+  }
+  return parseApplicationIdFromToken(params.account.token);
+}
+
 export function resolveConfiguredDiscordBotAgentIdsByBotUserId(params: {
   cfg: OpenClawConfig;
   currentAccountId: string;
@@ -117,11 +131,11 @@ export function resolveConfiguredDiscordBotAgentIdsByBotUserId(params: {
     if (!senderAgentId) {
       continue;
     }
-    const botUserId = normalizeDiscordBotUserId(
-      account.accountId === params.currentAccountId
-        ? params.currentBotUserId
-        : parseApplicationIdFromToken(account.token),
-    );
+    const botUserId = resolveDiscordAccountBotUserId({
+      account,
+      currentAccountId: params.currentAccountId,
+      currentBotUserId: params.currentBotUserId,
+    });
     if (!botUserId || ambiguousBotUserIds.has(botUserId)) {
       continue;
     }
