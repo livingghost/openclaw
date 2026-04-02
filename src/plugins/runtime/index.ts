@@ -231,8 +231,8 @@ export function createPluginRuntime(_options: CreatePluginRuntimeOptions = {}): 
       _options.allowGatewaySubagentBinding === true
         ? (params) => {
             const resolved = gatewayAgentAbortState.abort ?? baseAgent.abort;
-          return resolved(params);
-        }
+            return resolved(params);
+          }
         : baseAgent.abort,
   };
   const runtime = {
