@@ -326,12 +326,23 @@ function resolveTtsContextAgentId(params: ResolveTtsConfigParams): string {
   });
 }
 
+function stripScopedTtsConfigFields(config: TtsConfig): TtsConfig {
+  const { prefsPath: _ignoredPrefsPath, ...rest } = config;
+  return rest;
+}
+
 function resolveRawTtsConfig(params: ResolveTtsConfigParams): TtsConfig {
   const globalConfig = params.cfg.messages?.tts ?? {};
-  const agentDefaults = params.cfg.agents?.defaults?.tts ?? {};
-  const agentConfig = resolveAgentConfig(params.cfg, resolveTtsContextAgentId(params))?.tts ?? {};
+  const agentDefaults = stripScopedTtsConfigFields(params.cfg.agents?.defaults?.tts ?? {});
+  const agentConfig = stripScopedTtsConfigFields(
+    resolveAgentConfig(params.cfg, resolveTtsContextAgentId(params))?.tts ?? {},
+  );
   const base = mergeTtsConfig(mergeTtsConfig(globalConfig, agentDefaults), agentConfig);
-  return mergeTtsConfig(base, params.override);
+  const merged = mergeTtsConfig(base, stripScopedTtsConfigFields(params.override ?? {}));
+  return {
+    ...merged,
+    prefsPath: globalConfig.prefsPath,
+  };
 }
 
 export function getResolvedSpeechProviderConfig(

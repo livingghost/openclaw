@@ -873,6 +873,51 @@ describe("tts", () => {
         voice: "en-US-JennyNeural",
       });
     });
+
+    it("keeps prefsPath global when agent and override layers provide TTS config", () => {
+      const config = resolveTtsConfig({
+        cfg: {
+          agents: {
+            defaults: {
+              model: { primary: "openai/gpt-4o-mini" },
+              tts: {
+                prefsPath: "/tmp/tts-agent-defaults.json",
+              },
+            },
+            list: [
+              {
+                id: "voice-agent",
+                default: true,
+                tts: {
+                  prefsPath: "/tmp/tts-agent.json",
+                  provider: "openai",
+                },
+              },
+            ],
+          },
+          messages: {
+            tts: {
+              prefsPath: "/tmp/tts-global.json",
+            },
+          },
+        },
+        agentId: "voice-agent",
+        override: {
+          prefsPath: "/tmp/tts-override.json",
+          providers: {
+            openai: {
+              voice: "agent-voice",
+            },
+          },
+        },
+      });
+
+      expect(config.prefsPath).toBe("/tmp/tts-global.json");
+      expect(config.rawConfig.prefsPath).toBe("/tmp/tts-global.json");
+      expect(config.providerConfigs.openai).toMatchObject({
+        voice: "agent-voice",
+      });
+    });
   });
 
   describe("resolveConfiguredTtsMode", () => {

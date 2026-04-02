@@ -1,6 +1,4 @@
 import type { TtsConfig } from "../config/types.js";
-import { canonicalizeSpeechProviderId } from "./provider-registry.js";
-
 const RESERVED_TTS_CONFIG_KEYS = new Set([
   "auto",
   "enabled",
@@ -14,6 +12,8 @@ const RESERVED_TTS_CONFIG_KEYS = new Set([
   "timeoutMs",
 ]);
 
+const STATIC_TTS_PROVIDER_ALIASES = new Map([["edge", "microsoft"]]);
+
 function asProviderConfig(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
@@ -22,7 +22,8 @@ function asProviderConfig(value: unknown): Record<string, unknown> {
 }
 
 function normalizeProviderId(providerId: string): string {
-  return canonicalizeSpeechProviderId(providerId) ?? providerId.trim().toLowerCase();
+  const normalized = providerId.trim().toLowerCase();
+  return STATIC_TTS_PROVIDER_ALIASES.get(normalized) ?? normalized;
 }
 
 function collectLegacyProviderKeys(raw: TtsConfig): string[] {
