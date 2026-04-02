@@ -4,7 +4,7 @@ import { buildTalkConfigResponse, resolveActiveTalkProviderConfig } from "../../
 import type { TalkProviderConfig } from "../../config/types.gateway.js";
 import type { OpenClawConfig, TtsConfig, TtsProviderConfigMap } from "../../config/types.js";
 import { canonicalizeSpeechProviderId, getSpeechProvider } from "../../tts/provider-registry.js";
-import { synthesizeSpeech, type TtsDirectiveOverrides } from "../../tts/tts.js";
+import { resolveTtsConfig, synthesizeSpeech, type TtsDirectiveOverrides } from "../../tts/tts.js";
 import {
   ErrorCodes,
   errorShape,
@@ -80,7 +80,7 @@ function buildTalkTtsConfig(
     };
   }
 
-  const baseTts = config.messages?.tts ?? {};
+  const baseTts = resolveTtsConfig(config).rawConfig ?? {};
   const providerConfig = resolved.config;
   const resolvedProviderConfig =
     speechProvider.resolveTalkConfig?.({

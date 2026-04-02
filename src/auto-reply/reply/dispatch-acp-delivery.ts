@@ -198,6 +198,7 @@ export function createAcpDispatchDeliveryCoordinator(params: {
           kind,
           inboundAudio: params.inboundAudio,
           ttsAuto: params.sessionTtsAuto,
+          sessionKey: params.ctx.SessionKey,
         });
 
     if (params.shouldRouteToOriginating && params.originatingChannel && params.originatingTo) {

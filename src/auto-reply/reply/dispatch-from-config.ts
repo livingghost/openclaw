@@ -522,6 +522,7 @@ export async function dispatchReplyFromConfig(params: {
         kind: "final",
         inboundAudio,
         ttsAuto: sessionTtsAuto,
+        sessionKey: ctx.SessionKey,
       });
       if (shouldRouteToOriginating && originatingChannel && originatingTo) {
         const result = await routeReplyRuntime.routeReply({
@@ -677,6 +678,7 @@ export async function dispatchReplyFromConfig(params: {
               kind: "tool",
               inboundAudio,
               ttsAuto: sessionTtsAuto,
+              sessionKey: ctx.SessionKey,
             });
             const deliveryPayload = resolveToolDeliveryPayload(ttsPayload);
             if (!deliveryPayload) {
@@ -727,6 +729,7 @@ export async function dispatchReplyFromConfig(params: {
               kind: "block",
               inboundAudio,
               ttsAuto: sessionTtsAuto,
+              sessionKey: ctx.SessionKey,
             });
             if (shouldRouteToOriginating) {
               await sendPayloadAsync(ttsPayload, context?.abortSignal, false);
@@ -783,7 +786,7 @@ export async function dispatchReplyFromConfig(params: {
       routedFinalCount += finalReply.routedFinalCount;
     }
 
-    const ttsMode = resolveConfiguredTtsMode(cfg);
+    const ttsMode = resolveConfiguredTtsMode(cfg, { sessionKey: ctx.SessionKey });
     // Generate TTS-only reply after block streaming completes (when there's no final reply).
     // This handles the case where block streaming succeeds and drops final payloads,
     // but we still want TTS audio to be generated from the accumulated block content.
@@ -801,6 +804,7 @@ export async function dispatchReplyFromConfig(params: {
           kind: "final",
           inboundAudio,
           ttsAuto: sessionTtsAuto,
+          sessionKey: ctx.SessionKey,
         });
         // Only send if TTS was actually applied (mediaUrl exists)
         if (ttsSyntheticReply.mediaUrl) {
