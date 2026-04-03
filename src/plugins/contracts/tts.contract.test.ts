@@ -907,8 +907,10 @@ describe("tts", () => {
         },
         messages: {
           tts: {
-            edge: {
-              apiKey: "edge-key",
+            providers: {
+              edge: {
+                apiKey: "edge-key",
+              },
             },
           },
         },
@@ -959,7 +961,8 @@ describe("tts", () => {
       });
 
       expect(config.prefsPath).toBe("/tmp/tts-global.json");
-      expect(config.rawConfig.prefsPath).toBe("/tmp/tts-global.json");
+      expect(config.rawConfig).toBeDefined();
+      expect(config.rawConfig?.prefsPath).toBe("/tmp/tts-global.json");
       expect(config.providerConfigs.openai).toMatchObject({
         voice: "agent-voice",
       });

@@ -8,15 +8,15 @@ describe("mergeTtsConfig", () => {
   it("coalesces edge and microsoft provider configs without runtime registry state", () => {
     const merged = mergeTtsConfig(
       {
-        edge: {
-          apiKey: "edge-key",
+        providers: {
+          edge: {
+            apiKey: "edge-key",
+          },
         },
       },
       {
-        providers: {
-          microsoft: {
-            voice: "en-US-JennyNeural",
-          },
+        microsoft: {
+          voice: "en-US-JennyNeural",
         },
       },
     );
@@ -55,8 +55,10 @@ describe("mergeTtsConfig", () => {
     try {
       const merged = mergeTtsConfig(
         {
-          "acme-legacy": {
-            apiKey: "legacy-key",
+          providers: {
+            "acme-legacy": {
+              apiKey: "legacy-key",
+            },
           },
         },
         {
@@ -73,10 +75,7 @@ describe("mergeTtsConfig", () => {
         apiKey: "legacy-key",
         voice: "canonical-voice",
       });
-      expect((merged as Record<string, unknown>).acme).toMatchObject({
-        apiKey: "legacy-key",
-        voice: "canonical-voice",
-      });
+      expect((merged as Record<string, unknown>).acme).toBeUndefined();
       expect((merged as Record<string, unknown>)["acme-legacy"]).toBeUndefined();
     } finally {
       setActivePluginRegistry(previousRegistry);
